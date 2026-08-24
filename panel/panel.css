@@ -157,3 +157,20 @@ td.num { text-align: right; }
 #statusbar.running { color: var(--good); }
 #statusbar.paused { color: var(--warn); }
 #statusbar.error { color: var(--bad); }
+
+/* 进度条 */
+.progress-track {
+  height: 6px;
+  background: var(--bg3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+#progressBar {
+  height: 100%;
+  width: 0;
+  background: var(--accent);
+  border-radius: 3px;
+  transition: width 0.3s;
+}
+#progressBar.done { background: var(--good); }
+#progressBar.paused { background: var(--warn); }

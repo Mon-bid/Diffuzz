@@ -6,6 +6,7 @@ import { initResults } from './views/results.js';
 import { initDiffViewer } from './views/diff-viewer.js';
 import { initDictManager } from './views/dict-manager.js';
 import { harToTemplate, parseCurl } from '../core/har-adapter.js';
+import { analyze } from '../core/diff-engine.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -147,16 +148,24 @@ port.onMessage.addListener((msg) => {
       results.setData(state.snapshot);
     }
   } else if (msg.type === 'task/result') {
-    // 增量合并
+    // 增量合并 + 实时算异常分，让异常行边跑边冒出来
     if (state.snapshot) {
       const seen = new Set(state.snapshot.records.map((r) => r.seq));
       for (const r of msg.records) if (!seen.has(r.seq)) state.snapshot.records.push(r);
+      if (state.snapshot.baseline) {
+        state.snapshot.results = analyze(
+          state.snapshot.records.filter((r) => !r.skipped),
+          state.snapshot.baseline
+        );
+      }
       results.setData(state.snapshot);
+      updateProgress();
     }
   } else if (msg.type === 'task/progress') {
     if (state.snapshot && state.snapshot.task) {
       Object.assign(state.snapshot.task.stats, msg.stats);
       renderStatus();
+      updateProgress();
     }
   } else if (msg.type === 'task/done') {
     applySnapshot(msg.snapshot);
@@ -166,16 +175,49 @@ port.onMessage.addListener((msg) => {
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
   if (snapshot && snapshot.task) {
-    if (snapshot.results && snapshot.results.length) {
-      // 已有分析结果
-    } else if (snapshot.records && snapshot.records.length && snapshot.baseline && /done|aborted/.test(snapshot.task.status)) {
-      // 兼容：SW 端已算但 snapshot 里带上了
-    }
     results.setData(snapshot);
   } else {
     results.setData({});
   }
   renderStatus();
+  updateProgress();
+}
+
+/** 结果栏顶部的进度条与进度文字 */
+function updateProgress() {
+  const wrap = $('progressWrap');
+  const bar = $('progressBar');
+  const text = $('progressText');
+  const t = state.snapshot && state.snapshot.task;
+  if (!t || !t.stats || !t.stats.total) {
+    wrap.hidden = true;
+    return;
+  }
+  wrap.hidden = false;
+  const doneN = (t.stats.done || 0) + (t.stats.skipped || 0);
+  const pct = Math.min(100, Math.round((100 * doneN) / t.stats.total));
+  bar.style.width = pct + '%';
+  bar.className = /done/.test(t.status) ? 'done' : t.status === 'paused' ? 'paused' : '';
+  const rps = t.stats.rps || 0;
+  const remain = Math.max(0, t.stats.total - doneN);
+  const eta = t.status === 'running' && rps > 0 ? ` · 预计剩余 ~${fmtEta(remain / rps)}` : '';
+  const errs = t.stats.errors ? ` · 错误${t.stats.errors}` : '';
+  const skip = t.stats.skipped ? ` · 跳过${t.stats.skipped}` : '';
+  text.textContent =
+    `${statusLabel(t.status)} ${doneN}/${t.stats.total}（${pct}%）` +
+    (rps && t.status === 'running' ? ` · ${rps}/s` : '') + eta + errs + skip +
+    (t.error ? ` · ${t.error}` : '') +
+    (t.pauseReason && t.status === 'paused' ? ` · ${t.pauseReason}` : '');
+}
+
+function statusLabel(s) {
+  return { baselining: '⏳ 建基线中', running: '▶ 运行中', paused: '⏸ 已暂停', done: '✓ 完成', aborted: '⏹ 已终止', error: '✗ 出错' }[s] || s;
+}
+
+function fmtEta(sec) {
+  if (sec < 60) return Math.ceil(sec) + '秒';
+  if (sec < 3600) return Math.ceil(sec / 60) + '分钟';
+  return (sec / 3600).toFixed(1) + '小时';
 }
 
 function renderStatus() {
