@@ -76,9 +76,14 @@ $('start').addEventListener('click', async () => {
   });
   const resp = await sendMsg({ type: 'task/start', template, config, allowIntranet: $('allowIntranet').checked });
   if (!resp || !resp.ok) {
-    $('startHint').textContent = (resp && resp.error) || '启动失败（Service Worker 无响应）';
+    const err = (resp && resp.error) || '启动失败（Service Worker 无响应）';
+    $('startHint').textContent = '✗ ' + err;
+    $('startHint').classList.add('err');
+    $('statusText').textContent = '启动失败: ' + err;
+    $('statusbar').className = 'error';
   } else {
     $('startHint').textContent = '';
+    $('startHint').classList.remove('err');
   }
 });
 
@@ -259,6 +264,16 @@ function onSelectRow(record, diff) {
 // 面板打开时拉取当前任务状态
 sendMsg({ type: 'task/state' }).then((resp) => {
   if (resp && resp.ok && resp.snapshot) applySnapshot(resp.snapshot);
+});
+
+// 全局错误兜底：面板内任何未捕获异常直接显示在状态栏，避免"无声空白"
+window.addEventListener('error', (e) => {
+  $('statusText').textContent = '面板异常: ' + (e.message || 'unknown');
+  $('statusbar').className = 'error';
+});
+window.addEventListener('unhandledrejection', (e) => {
+  $('statusText').textContent = '面板异常(异步): ' + ((e.reason && e.reason.message) || e.reason);
+  $('statusbar').className = 'error';
 });
 
 updateStartState();

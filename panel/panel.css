@@ -78,6 +78,7 @@ input[type='checkbox'] { width: auto; }
 .row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .lbl { color: var(--dim); font-size: 11px; margin-top: 2px; }
 .hint { color: var(--dim); font-size: 11px; white-space: pre-wrap; }
+.hint.err { color: var(--bad); font-weight: 700; font-size: 12px; }
 
 .btn { cursor: pointer; }
 .btn.primary { background: var(--accent); color: #202124; font-weight: 700; border: none; padding: 6px 14px; }
