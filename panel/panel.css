@@ -137,6 +137,9 @@ details { display: flex; flex-direction: column; gap: 4px; }
 table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: Consolas, monospace; }
 th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
 th { color: var(--dim); position: sticky; top: 0; background: var(--bg2); }
+th[data-key] { cursor: pointer; user-select: none; }
+th[data-key]:hover { color: var(--fg); }
+th.sorted { color: var(--accent); }
 tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--bg3); }
 tbody tr.sel { background: #1f3a5f; }

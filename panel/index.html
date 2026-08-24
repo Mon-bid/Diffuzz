@@ -115,7 +115,14 @@
     <div class="tbl-wrap">
       <table id="resultTable">
         <thead>
-          <tr><th>#</th><th>payload</th><th>状态</th><th>长度</th><th>耗时</th><th>分</th></tr>
+          <tr>
+            <th data-key="seq" title="点击排序">#</th>
+            <th data-key="payload" title="点击排序">payload</th>
+            <th data-key="status" title="点击排序">状态</th>
+            <th data-key="len" title="点击排序">长度</th>
+            <th data-key="time" title="点击排序">耗时</th>
+            <th data-key="score" title="点击排序">分</th>
+          </tr>
         </thead>
         <tbody id="resultBody"></tbody>
       </table>

@@ -14,6 +14,7 @@ export function initResults({ onSelectRow }) {
     results: [],
     resultMap: new Map(),
     sortBy: 'score',
+    sortAsc: false,
     shown: PAGE,
     selectedSeq: null,
   };
@@ -31,13 +32,21 @@ export function initResults({ onSelectRow }) {
       const d = state.resultMap.get(r.seq);
       joined.push({ r, d });
     }
-    const cmp = {
-      score: (a, b) => ((b.d && b.d.anomalyScore) || 0) - ((a.d && a.d.anomalyScore) || 0) || a.r.seq - b.r.seq,
-      seq: (a, b) => a.r.seq - b.r.seq,
-      status: (a, b) => a.r.status - b.r.status || a.r.seq - b.r.seq,
-      len: (a, b) => (b.r.fingerprint ? b.r.fingerprint.lenNorm : 0) - (a.r.fingerprint ? a.r.fingerprint.lenNorm : 0),
-      time: (a, b) => b.r.timingMs - a.r.timingMs,
+    const val = {
+      seq: (x) => x.r.seq,
+      payload: (x) => String(x.r.payload ?? ''),
+      status: (x) => (x.r.networkError ? -1 : x.r.status),
+      len: (x) => (x.r.fingerprint ? x.r.fingerprint.lenNorm : -1),
+      time: (x) => x.r.timingMs || 0,
+      score: (x) => (x.d ? x.d.anomalyScore : -1),
     }[state.sortBy];
+    const dir = state.sortAsc ? 1 : -1;
+    const cmp = (a, b) => {
+      const va = val(a);
+      const vb = val(b);
+      if (state.sortBy === 'payload') return va.localeCompare(vb) * dir;
+      return (va - vb) * dir || a.r.seq - b.r.seq;
+    };
     return joined.sort(cmp);
   }
 
@@ -67,8 +76,37 @@ export function initResults({ onSelectRow }) {
       frag.appendChild(tr);
     }
     bodyEl.replaceChildren(frag);
+    renderHeader();
     moreEl.hidden = state.shown >= data.length;
     moreEl.textContent = `显示更多（${Math.min(state.shown, data.length)}/${data.length}）`;
+  }
+
+  function renderHeader() {
+    for (const th of document.querySelectorAll('#resultTable th[data-key]')) {
+      const key = th.dataset.key;
+      if (key === state.sortBy) {
+        th.classList.add('sorted');
+        th.textContent = th.textContent.replace(/\s*[▲▼]$/, '') + (state.sortAsc ? ' ▲' : ' ▼');
+      } else {
+        th.classList.remove('sorted');
+        th.textContent = th.textContent.replace(/\s*[▲▼]$/, '');
+      }
+    }
+  }
+
+  // 点击表头排序：同列切换升降序，换列默认降序（异常分视角）
+  for (const th of document.querySelectorAll('#resultTable th[data-key]')) {
+    th.addEventListener('click', () => {
+      const key = th.dataset.key;
+      if (state.sortBy === key) {
+        state.sortAsc = !state.sortAsc;
+      } else {
+        state.sortBy = key;
+        state.sortAsc = false;
+      }
+      sortEl.value = key;
+      render();
+    });
   }
 
   moreEl.addEventListener('click', () => {
@@ -77,6 +115,7 @@ export function initResults({ onSelectRow }) {
   });
   sortEl.addEventListener('change', () => {
     state.sortBy = sortEl.value;
+    state.sortAsc = false;
     render();
   });
 
