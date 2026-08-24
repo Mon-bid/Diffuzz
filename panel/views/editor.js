@@ -22,6 +22,11 @@ export function initEditor({ onFuzzChange }) {
 
   const fields = [el.url, el.headers, el.body];
   let fuzzOriginal = null;
+  // 记录最后聚焦的输入框：点按钮时焦点会离开输入框，不能依赖 document.activeElement
+  let lastField = null;
+  for (const f of fields) {
+    f.addEventListener('focusin', () => { lastField = f; });
+  }
 
   function fuzzCount() {
     return countFuzz(el.url.value) + countFuzz(el.headers.value) + countFuzz(el.body.value);
@@ -34,9 +39,12 @@ export function initEditor({ onFuzzChange }) {
     if (onFuzzChange) onFuzzChange(n);
   }
 
+  // 阻止按钮抢占焦点，保持输入框里的选中状态
+  el.markFuzz.addEventListener('mousedown', (e) => e.preventDefault());
+
   el.markFuzz.addEventListener('click', () => {
-    const active = document.activeElement;
-    if (!fields.includes(active)) {
+    const active = fields.includes(document.activeElement) ? document.activeElement : lastField;
+    if (!active) {
       updateFuzzInfo('请先把光标移到 URL / 请求头 / 请求体 输入框');
       return;
     }
