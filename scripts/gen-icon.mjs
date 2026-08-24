@@ -1,8 +1,9 @@
-// 生成扩展图标（纯 Node，无依赖）：深色底 + 蓝色圆点阵
+// 生成扩展图标（纯 Node，无依赖）：深色底 + 蓝色圆 + 黄色"异常点"
 // 用法: node scripts/gen-icon.mjs
 import zlib from 'node:zlib';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 function crc32(buf) {
   let c;
@@ -49,7 +50,7 @@ function png(size, draw) {
   ]);
 }
 
-// 画布：深灰底 #202124，蓝色圆 #8ab4f8，圆内右上角黄色小方块 #fdd663（差异信号）
+// 深灰底 #202124，蓝色圆 #8ab4f8，圆内右上角黄色小方块 #fdd663（差异信号）
 const BG = [32, 33, 36, 255];
 const BLUE = [138, 180, 248, 255];
 const YELLOW = [253, 214, 99, 255];
@@ -58,14 +59,13 @@ function draw(nx, ny) {
   const dx = nx - 0.5;
   const dy = ny - 0.5;
   if (dx * dx + dy * dy <= 0.32 * 0.32) {
-    // 圆内的“异常点”：右上角小方块
     if (nx >= 0.55 && nx <= 0.72 && ny >= 0.22 && ny <= 0.39) return YELLOW;
     return BLUE;
   }
   return BG;
 }
 
-const dir = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..', 'icons');
+const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'icons');
 fs.mkdirSync(dir, { recursive: true });
 for (const s of [16, 48, 128]) {
   fs.writeFileSync(path.join(dir, `icon${s}.png`), png(s, draw));

@@ -294,24 +294,5 @@ export class TaskRunner {
       this.results = analyze(this.records.filter((r) => !r.skipped), this.baseline);
     }
     this.broadcast({ type: 'task/done', snapshot: this.snapshot() });
-    this.persist();
-  }
-
-  async persist() {
-    // SW 可能被回收：保存任务元信息，恢复时提示中断
-    try {
-      if (!this.task) return;
-      await chrome.storage.session.set({
-        diffuzzLastTask: {
-          id: this.task.id,
-          status: this.task.status,
-          createdAt: this.task.createdAt,
-          total: this.task.stats.total,
-          done: this.task.stats.done,
-        },
-      });
-    } catch {
-      // storage 不可用时忽略
-    }
   }
 }

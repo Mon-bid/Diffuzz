@@ -78,20 +78,13 @@
 
 - Chrome 扩展，Manifest V3，`minimum_chrome_version: 116`。
 - **零依赖、零构建**：原生 ES Modules + 原生 HTML/CSS/JS，加载未打包扩展即可开发。不引入 React/Vite/打包器（面板 UI 规模小，DOM 直操足够；如后期 UI 复杂再议）。
-- 三个运行上下文：
+- **单一运行上下文**（v0.2 架构修订：**无 Service Worker**）：面板页面 = UI + 任务执行（task-runner/sender/ratelimit 全部在 panel 页面内直接运行），请求捕获用 chrome.devtools.network。
 
-```
-┌─ DevTools 上下文 ─────────┐   ┌─ Service Worker ────────┐   ┌─ 页面上下文 ─┐
-│ devtools.html (引导)      │   │ service-worker.js      │   │ (不注入任何   │
-│ panel/index.html (主UI)   │◄─►│  ├ task-runner 任务机   │   │  content     │
-│  只负责展示与交互          │msg│  ├ sender 发送+DNR覆盖  │   │  script)     │
-│ chrome.devtools.network   │   │  └ ratelimit 令牌桶     │   └──────────────┘
-└───────────────────────────┘   └────────────────────────┘
-```
+> **为什么没有后台 SW**：MV3 后台 Service Worker 会被 Chrome 不定期回收，实测导致任务冻结、终止命令失联、结果丢失。v0.1 曾采用 SW 架构，v0.2 修订为面板页面内执行。代价：关闭 DevTools 即终止任务（面板重开为新任务）。
 
 **职责切分原则**：
-- **Panel（DevTools 页）**：纯 UI。捕获请求列表、编辑模板、展示结果。不发送请求 → 用户切换 DevTools 面板时任务不中断。
-- **Service Worker（后台）**：任务生命周期 + 实际 HTTP 发送 + 限速。任务状态持久化到 `chrome.storage.session`，SW 休眠后可恢复。
+- **panel/（DevTools 面板页）**：UI + 任务执行一体。捕获请求列表、编辑模板、发送请求、展示结果。
+- **background/（发送链路模块）**：无事件入口，由面板页面 import 直接调用（task-runner/sender/ratelimit）。
 - **core/（纯逻辑模块）**：不碰任何 `chrome.*` API，可在普通页面里直接单测。
 
 ### 3.2 manifest.json（关键项）
@@ -100,31 +93,31 @@
 {
   "manifest_version": 3,
   "name": "Diffuzz",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "授权测试用的请求变异与响应差异分析 DevTools 面板",
   "minimum_chrome_version": "116",
   "devtools_page": "devtools/devtools.html",
-  "background": { "service_worker": "background/service-worker.js", "type": "module" },
-  "permissions": ["storage", "declarativeNetRequest", "downloads"],
+  "permissions": ["storage", "declarativeNetRequest"],
   "host_permissions": ["http://*/*", "https://*/*"],
-  "icons": { "128": "icons/icon128.png" }
+  "icons": { "16": "icons/icon16.png", "48": "icons/icon48.png", "128": "icons/icon128.png" }
 }
 ```
 
 - `host_permissions` 全域是必须的（目标站点未知），安装时会有"读取所有网站数据"提示——在 README 里明说原因。
 - `declarativeNetRequest`（DNR）：fetch 无法设置 `Cookie` 等 forbidden header，用**会话级 DNR 规则**对扩展自己发出的请求做头覆盖（见 4.3）。
-- `downloads`：仅用于导出结果文件。
+- 无 `background` 字段：不使用 Service Worker（见 3.1）。结果导出用 Blob URL，无需 downloads 权限。
 
 ### 3.3 请求发送路径（核心技术决策）
 
-**决策：请求全部从 Service Worker 的 `fetch()` 发出，配合 DNR 会话规则覆盖受限头。**
+**决策：请求从 DevTools 面板页面的 `fetch()` 发出，配合 DNR 会话规则覆盖受限头。**
+（v0.1 为 SW 发送，v0.2 修订为面板页面发送，原因见 3.1；两者能力等价：host_permissions 免 CORS、`credentials:'include'` 带 Cookie、DNR 覆盖受限头。）
 
-理由（对比过的备选）：
+其他备选：
 
 | 方案 | 结论 |
 |------|------|
-| A. SW fetch + DNR 头覆盖（**采用**） | 拥有 host_permissions 后不受 CORS 限制；`credentials:'include'` 自动带 Cookie；DNR 可覆盖 Cookie/Origin/UA 等受限头；面板关闭不中断 |
-| B. `inspectedWindow.eval` 在页面里发 fetch | 受页面 CSP 限制、可能触发目标站的风控脚本、无法覆盖受限头。**仅作降级备选**（A 失败时提示用户） |
+| A. Service Worker fetch + DNR 头覆盖（v0.1 采用，已弃用） | 能力同现行方案，但 MV3 SW 会被 Chrome 回收，任务冻结/终止失联 |
+| B. `inspectedWindow.eval` 在页面里发 fetch | 受页面 CSP 限制、可能触发目标站的风控脚本、无法覆盖受限头。不采用 |
 | C. chrome.debugger 协议原始重放 | 能力最强（可改任意头），但会挂起"正在被调试"横幅、与其他 DevTools 功能冲突。**不采用** |
 
 发送配置：
@@ -133,9 +126,9 @@
 fetch(url, {
   method, headers, body,
   credentials: 'include',          // 复用浏览器 Cookie
-  redirect: 'manual',              // 默认手动：观察 302 Location 是授权测试关键信号
+  redirect: 'follow',              // 默认跟随（opaque-redirect 限制见下）
   cache: 'no-store',
-  signal: AbortSignal.timeout(15000)
+  signal: <AbortController.signal> // 终止任务时立即掐断在途请求
 })
 ```
 
@@ -165,20 +158,20 @@ diffuzz/
 ├── devtools/
 │   ├── devtools.html            # devtools_page 入口
 │   └── devtools.js              # chrome.devtools.panels.create("Diffuzz", ...)
-├── panel/                       # DevTools 面板（纯 UI）
+├── panel/                       # DevTools 面板（UI + 任务执行）
 │   ├── index.html
 │   ├── panel.css
-│   ├── app.js                   # 主控制器：视图路由、与 SW 通信
+│   ├── app.js                   # 主控制器：任务执行、视图编排
 │   └── views/
 │       ├── request-list.js      # ① 捕获列表 + 搜索 + cURL 导入
 │       ├── editor.js            # ② 模板编辑 + FUZZ 标记 + payload 管理
 │       ├── results.js           # ③ 结果表 + 排序 + 导出
-│       └── diff-viewer.js       # 差异对比（基线 vs 选中项）
+│       ├── dict-manager.js      # 字典库：保存 / .txt 导入 / 复用
+│       └── diff-viewer.js       # 响应查看弹窗（详情 / 基线对比）
 ├── background/
-│   ├── service-worker.js        # 消息路由入口
 │   ├── task-runner.js           # 任务状态机：created→baselining→running→done/paused/aborted
 │   ├── sender.js                # fetch 发送 + DNR 规则申请/回收
-│   └── ratelimit.js             # 令牌桶
+│   └── ratelimit.js             # 限速
 ├── core/                        # 纯逻辑，零 chrome API 依赖，可独立单测
 │   ├── template.js              # {{FUZZ}} 解析、渲染、位置定位
 │   ├── har-adapter.js           # HAR entry / cURL → RequestTemplate
@@ -187,28 +180,28 @@ diffuzz/
 │   ├── diff-engine.js           # 基线统计、聚类、异常评分
 │   └── util.js                  # FNV-1a、sha256 hex、格式化
 ├── test/
-│   ├── runner.html              # 极简断言跑器（无框架，import core/* 直接跑）
-│   ├── normalize.test.js
-│   ├── fingerprint.test.js
-│   ├── diff-engine.test.js
-│   └── server.mjs               # 本地靶机（见 §9 验收）
+│   ├── tests.js + run.mjs          # 单测（Node 与浏览器共用，27 项）
+│   ├── runner.html               # 浏览器端跑器
+│   └── server.mjs               # 本地靶机（验收用）
 └── scripts/
-    └── pack.sh                  # zip 打包发布
+    ├── pack.sh                  # zip 打包发布
+    ├── gen-icon.mjs             # 生成扩展图标
+    └── smoke.mjs                # 端到端冒烟（Node 模拟完整任务）
 ```
 
-### 4.2 各模块接口（panel ↔ SW 消息协议）
+### 4.2 panel <-> task-runner 交互（v0.2：同页直接调用）
 
-runtime message，`type` 字段路由：
+无跨进程消息。面板 `app.js` 持有 TaskRunner 实例，通过一个假 port 对象（`addPort({postMessage})`）接收任务事件流：
 
-| type | 方向 | 载荷 | 说明 |
+| 事件 | 方向 | 载荷 | 说明 |
 |------|------|------|------|
-| `task/start` | panel→SW | `{template, config}` | 校验后建任务，先跑基线 |
-| `task/pause` / `task/abort` | panel→SW | `{taskId}` | |
-| `task/progress` | SW→panel（port 长连接推送） | `{done, total, rps, errors}` | 每 500ms 聚合一次 |
-| `task/result` | SW→panel | `{taskId, records[]}` | 批量（每 10 条或 1s）推送 |
-| `task/state` | 双向 | `{task}` | 面板重开时拉取/恢复 |
+| `task/state` | runner->panel | `{task}` | 状态变化（启动/暂停/终止/出错） |
+| `task/baseline` | runner->panel | `{baseline, baselineRecords}` | 基线完成 |
+| `task/result` | runner->panel | `{records[]}` | 批量结果（每 10 条） |
+| `task/progress` | runner->panel | `{stats}` | 进度（每秒聚合） |
+| `task/done` | runner->panel | `{snapshot}` | 任务结束（含全量记录与 DiffResult） |
 
-SW 内部对 panel 用 `chrome.runtime.connect` 长连接；面板关闭只断 UI，任务继续，面板重开通过 `task/state` 恢复视图。
+按钮直接调用 `runner.pause()/resume()/abort()`（本地函数调用，终止会经 AbortController 立即掐断在途请求）；面板在 `task/result` 到达时本地重算 `analyze()` 实现实时异常分。
 
 ---
 
@@ -299,7 +292,7 @@ DiffResult = {
 }
 ```
 
-存储：任务运行态放 `chrome.storage.session`（关浏览器即焚）；完成任务的摘要（不含响应正文）可选放 `chrome.storage.local`，上限 20 条 LRU。
+存储：任务运行态仅存于面板页面内存（关闭 DevTools 即终止，见 3.1）；用户设置与字典库放 `chrome.storage.local`。
 
 ---
 
@@ -399,7 +392,7 @@ score = 3.0·statusDiff
 | **M2 单条重放** | SW fetch 发送（含 DNR 头覆盖）+ Cookie 复用；"原样重放"按钮验证登录态生效 | 1.5 天 |
 | **M3 批量任务** | payload 输入/区间生成 + task-runner 状态机 + 限速 + 进度推送 + 暂停/终止 + 自动暂停 | 2 天 |
 | **M4 差异引擎** | normalize/fingerprint/diff-engine（含单测）+ 结果表异常排序 + 差异对比视图 | 2.5 天 |
-| **M5 完整体验** | cURL 导入、导出 CSV/JSON、忽略规则 UI、任务恢复、面板重开状态还原 | 1.5 天 |
+| **M5 完整体验** | cURL 导入、导出 CSV/JSON、忽略规则 UI、字典库（v0.2 新增，替代 SW 时代的"任务恢复"） | 1.5 天 |
 | **M6 加固收尾** | §7 安全限制全项落地、二进制响应处理、README、打包脚本、Edge/Chrome 双端冒烟 | 1 天 |
 
 依赖关系：M2 依赖 M1；M3 依赖 M2；M4 的 core/ 三模块（normalize/fingerprint/diff-engine）**不依赖 M1-M3**，可从 M0 起并行开发（先写单测，拿录制样本驱动）。
