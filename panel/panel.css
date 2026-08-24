@@ -148,7 +148,19 @@ td.num { text-align: right; }
 
 /* 差异视图 */
 .diff { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
-.diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; max-height: 240px; }
+#diffBody {
+  resize: vertical;
+  overflow: auto;
+  min-height: 140px;
+  max-height: 70vh;
+  height: 240px;
+  border: 1px dashed var(--line);
+  border-radius: 4px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+}
+.diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: 1; min-height: 0; overflow: hidden; }
 .diff-pane {
   margin: 0; padding: 6px;
   background: var(--bg3); border-radius: 4px;
@@ -157,6 +169,14 @@ td.num { text-align: right; }
 }
 .d-add { background: rgba(129, 201, 149, 0.18); }
 .d-del { background: rgba(242, 139, 130, 0.18); text-decoration: line-through; }
+
+/* 响应详情 */
+.detail-pane { flex: 1; min-height: 0; overflow: auto; font-family: Consolas, monospace; font-size: 11px; }
+.detail-pane .st { color: var(--accent); font-weight: 700; }
+.detail-pane .k { color: var(--dim); }
+.detail-pane .v { color: var(--fg); word-break: break-all; }
+.detail-pane .body { margin: 6px 0 0; padding: 6px; background: var(--bg3); border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+.detail-pane .sec { margin-top: 6px; color: var(--warn); }
 
 #statusbar {
   display: flex; align-items: center; gap: 8px;

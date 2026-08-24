@@ -131,14 +131,19 @@
 
     <div id="diffViewer" class="diff" hidden>
       <div class="row">
-        <strong id="diffTitle">差异对比</strong>
+        <strong id="diffTitle">响应详情</strong>
         <span class="spacer"></span>
+        <button id="tabDetail" class="btn ghost">响应详情</button>
+        <button id="tabDiff" class="btn ghost">基线对比</button>
         <button id="diffClose" class="btn ghost">关闭</button>
       </div>
       <div id="diffSignals" class="hint"></div>
-      <div class="diff-cols">
-        <pre id="diffLeft" class="diff-pane"></pre>
-        <pre id="diffRight" class="diff-pane"></pre>
+      <div id="diffBody">
+        <div id="detailPane" class="detail-pane"></div>
+        <div class="diff-cols">
+          <pre id="diffLeft" class="diff-pane" title="基线响应"></pre>
+          <pre id="diffRight" class="diff-pane" title="本条响应"></pre>
+        </div>
       </div>
     </div>
   </section>
