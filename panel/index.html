@@ -21,7 +21,19 @@
   <!-- ① 请求来源 -->
   <section class="col" id="col-source">
     <h2>请求来源</h2>
-    <input id="captureFilter" type="search" placeholder="过滤 URL…">
+    <div class="row">
+      <select id="methodFilter" style="width:90px">
+        <option value="">全部方法</option>
+        <option>GET</option>
+        <option>POST</option>
+        <option>PUT</option>
+        <option>PATCH</option>
+        <option>DELETE</option>
+        <option>HEAD</option>
+        <option>其他</option>
+      </select>
+      <input id="captureFilter" type="search" placeholder="过滤 URL…" style="flex:1">
+    </div>
     <ul id="captureList" class="list"></ul>
     <details>
       <summary>粘贴 cURL 导入</summary>

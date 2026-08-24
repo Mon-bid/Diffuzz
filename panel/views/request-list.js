@@ -3,17 +3,27 @@
 export function initRequestList({ onSelect }) {
   const listEl = document.getElementById('captureList');
   const filterEl = document.getElementById('captureFilter');
+  const methodEl = document.getElementById('methodFilter');
 
   const state = {
     items: [], // {id, method, url, harEntry}
     activeId: null,
     filter: '',
+    method: '',
   };
   const MAX_ITEMS = 2000;
 
   function visible() {
     const f = state.filter.toLowerCase();
-    return state.items.filter((it) => !f || it.url.toLowerCase().includes(f));
+    const KNOWN = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'];
+    return state.items.filter((it) => {
+      if (state.method === '其他') {
+        if (KNOWN.includes(it.method)) return false;
+      } else if (state.method && it.method !== state.method) {
+        return false;
+      }
+      return !f || it.url.toLowerCase().includes(f);
+    });
   }
 
   function render() {
@@ -48,6 +58,11 @@ export function initRequestList({ onSelect }) {
 
   filterEl.addEventListener('input', () => {
     state.filter = filterEl.value.trim();
+    render();
+  });
+
+  methodEl.addEventListener('change', () => {
+    state.method = methodEl.value;
     render();
   });
 
