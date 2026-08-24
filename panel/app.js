@@ -280,4 +280,38 @@ window.addEventListener('unhandledrejection', (e) => {
   $('statusbar').className = 'error';
 });
 
+// ---------- 三栏拖拽调宽 ----------
+function initSplitters() {
+  const cols = $('cols');
+  const apply = (w1, w2) => {
+    cols.style.gridTemplateColumns = `${w1}px 8px ${w2}px 8px minmax(300px, 1fr)`;
+  };
+  const wire = (id, getStart, setW) => {
+    const sp = $(id);
+    sp.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      sp.setPointerCapture(e.pointerId);
+      sp.classList.add('active');
+      const startX = e.clientX;
+      const startW = getStart();
+      const move = (ev) => setW(Math.round(Math.max(160, startW + ev.clientX - startX)));
+      const up = () => {
+        sp.classList.remove('active');
+        sp.removeEventListener('pointermove', move);
+        sp.removeEventListener('pointerup', up);
+      };
+      sp.addEventListener('pointermove', move);
+      sp.addEventListener('pointerup', up);
+    });
+  };
+  wire('split1',
+    () => $('col-source').getBoundingClientRect().width,
+    (w) => apply(w, $('col-editor').getBoundingClientRect().width));
+  wire('split2',
+    () => $('col-editor').getBoundingClientRect().width,
+    (w) => apply($('col-source').getBoundingClientRect().width, w));
+}
+initSplitters();
+
 updateStartState();
+// 面板初始化结束

@@ -188,6 +188,13 @@ export function initEditor({ onFuzzChange }) {
   document.getElementById('payloadBigCancel').addEventListener('click', () => {
     ov.hidden = true;
   });
+  // Esc 或点击遮罩空白处关闭
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !ov.hidden) ov.hidden = true;
+  });
+  ov.addEventListener('click', (e) => {
+    if (e.target === ov) ov.hidden = true;
+  });
   document.getElementById('payloadBigSave').addEventListener('click', () => {
     el.payload.value = big.value;
     ov.hidden = true;

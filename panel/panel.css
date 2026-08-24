@@ -41,11 +41,22 @@ body {
 
 #cols {
   display: grid;
-  grid-template-columns: 260px 1.1fr 1.3fr;
-  gap: 8px;
+  grid-template-columns: 260px 6px minmax(280px, 1.1fr) 6px minmax(300px, 1.3fr);
+  gap: 0;
   padding: 8px;
   flex: 1;
   min-height: 0;
+}
+
+/* 可拖拽列分隔条 */
+.splitter {
+  cursor: col-resize;
+  background: transparent;
+  border-radius: 3px;
+  margin: 0 1px;
+}
+.splitter:hover, .splitter.active {
+  background: var(--accent);
 }
 
 .col {
@@ -186,6 +197,7 @@ td.num { text-align: right; }
   justify-content: center;
   z-index: 10;
 }
+#payloadOverlay[hidden] { display: none; }
 .ov-box {
   width: 82%;
   height: 82%;

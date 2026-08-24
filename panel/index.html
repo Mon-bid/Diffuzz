@@ -19,8 +19,7 @@
 
 <main id="cols">
   <!-- ① 请求来源 -->
-  <section class="col" id="col-source">
-    <h2>请求来源</h2>
+  <section class="col" id="col-source">    <h2>请求来源</h2>
     <div class="row">
       <select id="methodFilter" style="width:90px">
         <option value="">全部方法</option>
@@ -41,6 +40,7 @@
       <button id="curlImport" class="btn">导入 cURL</button>
     </details>
   </section>
+  <div class="splitter" id="split1" title="拖动调整宽度"></div>
 
   <!-- ② 模板编辑器 -->
   <section class="col" id="col-editor">
@@ -91,6 +91,7 @@
     <button id="start" class="btn primary">▶ 开始</button>
     <div id="startHint" class="hint"></div>
   </section>
+  <div class="splitter" id="split2" title="拖动调整宽度"></div>
 
   <!-- ③ 结果分析 -->
   <section class="col" id="col-results">
