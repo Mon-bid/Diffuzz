@@ -29,8 +29,19 @@ export function initDictManager({ onLoad }) {
         alertHint(`已把字典 "${name}" 填入 Payload 编辑框，改完点"存为字典"覆盖`);
       });
       const exp = mkBtn('导出', () => downloadDict(name, d.content));
+      // 两段式删除：DevTools 面板中原生 confirm() 会被屏蔽，不能用
+      let armed = null;
       const del = mkBtn('删', async () => {
-        if (!confirm(`删除字典 "${name}"？`)) return;
+        if (armed !== name) {
+          armed = name;
+          del.textContent = '确认删除?';
+          setTimeout(() => {
+            armed = null;
+            del.textContent = '删';
+          }, 3000);
+          return;
+        }
+        armed = null;
         delete dicts[name];
         await persist();
         render();

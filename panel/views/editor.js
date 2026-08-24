@@ -166,7 +166,11 @@ export function initEditor({ onFuzzChange }) {
     const n = el.payload.value.split('\n').filter((l) => l.trim()).length;
     const rate = Number(document.getElementById('rate').value) || 2;
     const est = Math.round((n + 3) / rate);
-    el.startHint.textContent = n ? `共 ${n} 条 payload，预计 ~${est < 60 ? est + 's' : Math.round(est / 60) + 'min'}（含 3 次基线）` : '';
+    const estStr = est < 60 ? est + 's' : est < 3600 ? Math.round(est / 60) + 'min' : (est / 3600).toFixed(1) + 'h';
+    let warn = '';
+    if (n > 2000) warn = `（大任务：${n} 条，注意耗时与内存）`;
+    if (n > 10000) warn = `（超出单任务上限 10000 条，将无法启动）`;
+    el.startHint.textContent = n ? `共 ${n} 条 payload，预计 ~${estStr}（含 3 次基线）${warn}` : '';
   }
   [el.payload, document.getElementById('rate')].forEach((x) => x.addEventListener('input', updateEstimate));
 
