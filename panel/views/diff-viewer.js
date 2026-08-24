@@ -22,6 +22,13 @@ export function initDiffViewer() {
   closeBtn.addEventListener('click', () => {
     box.hidden = true;
   });
+  // Esc / 点击遮罩空白关闭弹窗
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && !box.hidden) box.hidden = true;
+  });
+  box.addEventListener('click', (e) => {
+    if (e.target === box) box.hidden = true;
+  });
   tabDetail.addEventListener('click', () => setActiveTab('detail'));
   tabDiff.addEventListener('click', () => setActiveTab('diff'));
 

@@ -146,14 +146,34 @@ tbody tr.sel { background: #1f3a5f; }
 tr.anom { color: var(--bad); font-weight: 700; }
 td.num { text-align: right; }
 
-/* 差异视图 */
-.diff { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+/* 响应查看弹窗 */
+#diffViewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+#diffViewer[hidden] { display: none; }
+.dv-box {
+  width: 80%;
+  height: 82%;
+  min-width: 480px;
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
 #diffBody {
-  resize: vertical;
+  resize: both;
   overflow: auto;
-  min-height: 140px;
-  max-height: 70vh;
-  height: 240px;
+  flex: 1;
+  min-height: 120px;
   border: 1px dashed var(--line);
   border-radius: 4px;
   padding: 4px;
