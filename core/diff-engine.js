@@ -84,12 +84,16 @@ export function analyze(records, baseline) {
     const timingZ = robustZ(r.timingMs || 0, medT, madT, muT, sdT);
     const simhashDist = hammingHex(fp.simhash64, bfp.simhash64);
 
+    // 耗时防抖：毫秒级网络抖动不计分。绝对差 >100ms 开始计分，>400ms 全额
+    const timingAbsDiff = Math.abs((r.timingMs || 0) - medT);
+    const timingScale = timingAbsDiff <= 100 ? 0 : Math.min(1, (timingAbsDiff - 100) / 300);
+
     let score =
       WEIGHTS.statusDiff * statusDiff +
       WEIGHTS.redirectDiff * redirectDiff +
       WEIGHTS.lenZ * clamp(Math.abs(lenZ), 0, 4) +
       WEIGHTS.simhash * (simhashDist / 64) +
-      WEIGHTS.timingZ * clamp(Math.abs(timingZ), 0, 4);
+      WEIGHTS.timingZ * clamp(Math.abs(timingZ), 0, 4) * timingScale;
     // 不在正常簇的成员至少获得簇级异常底分
     if (!inNormalCluster(clusterKey(fp))) score = Math.max(score, 1.5);
     score = clamp(score, 0, 10);

@@ -243,6 +243,20 @@ export const tests = [
     },
   },
   {
+    name: 'diff-engine: 毫秒级耗时抖动不计分（防抖）',
+    fn: (t) => {
+      const baseline = buildBaseline([rec(0, null, { time: 100 })]);
+      const records = [];
+      for (let i = 1; i <= 12; i++) records.push(rec(i, String(i), { time: 100 + (i % 3) * 5 })); // ±10ms 抖动
+      const results = analyze(records, baseline);
+      t.ok(results.every((r) => r.anomalyScore < 0.1), '轻微抖动不应产生异常分');
+      // 真正的慢请求（3s）仍要计分
+      records.push(rec(13, 'slow', { time: 3000 }));
+      const r2 = analyze(records, baseline);
+      t.ok(r2.find((x) => x.seq === 13).anomalyScore > 1, '3 秒慢响应应显著计分');
+    },
+  },
+  {
     name: 'diff-engine: clusterKey 一致',
     fn: (t) => {
       const a = rec(1, 'x');
