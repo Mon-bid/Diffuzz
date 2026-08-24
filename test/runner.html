@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Diffuzz core 单测</title>
+<style>
+  body { font-family: Consolas, monospace; background: #202124; color: #e8eaed; padding: 16px; }
+  .ok { color: #81c995; }
+  .bad { color: #f28b82; }
+</style>
+</head>
+<body>
+<h3>Diffuzz core/ 单测</h3>
+<div id="out"></div>
+<script type="module">
+import { tests } from './tests.js';
+const out = document.getElementById('out');
+const assert = {
+  equal: (a, b, msg) => { if (a !== b) throw new Error(`${msg || 'equal'}: ${JSON.stringify(a)} !== ${JSON.stringify(b)}`); },
+  notEqual: (a, b, msg) => { if (a === b) throw new Error(`${msg || 'notEqual'}: both ${JSON.stringify(a)}`); },
+  ok: (v, msg) => { if (!v) throw new Error(msg || 'falsy'); },
+  doesNotThrow: (fn) => { try { fn(); } catch (e) { throw new Error('unexpected throw: ' + e.message); } },
+};
+let pass = 0, fail = 0;
+for (const t of tests) {
+  const div = document.createElement('div');
+  try { await t.fn(assert); pass++; div.className = 'ok'; div.textContent = '✓ ' + t.name; }
+  catch (e) { fail++; div.className = 'bad'; div.textContent = '✗ ' + t.name + ' — ' + e.message; }
+  out.appendChild(div);
+}
+const sum = document.createElement('h4');
+sum.textContent = `${pass} passed, ${fail} failed`;
+sum.className = fail ? 'bad' : 'ok';
+out.appendChild(sum);
+</script>
+</body>
+</html>

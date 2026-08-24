@@ -1,0 +1,162 @@
+// ② 模板编辑器：URL/头/体编辑、FUZZ 标记、payload 管理、配置读取
+
+import { countFuzz, wrapSelection } from '../../core/template.js';
+
+export function initEditor({ onFuzzChange }) {
+  const el = {
+    method: document.getElementById('method'),
+    url: document.getElementById('urlInput'),
+    headers: document.getElementById('headersInput'),
+    body: document.getElementById('bodyInput'),
+    markFuzz: document.getElementById('markFuzz'),
+    clearFuzz: document.getElementById('clearFuzz'),
+    payload: document.getElementById('payloadInput'),
+    rangeFrom: document.getElementById('rangeFrom'),
+    rangeTo: document.getElementById('rangeTo'),
+    rangeStep: document.getElementById('rangeStep'),
+    rangeFill: document.getElementById('rangeFill'),
+    ignore: document.getElementById('ignoreInput'),
+    fuzzInfo: document.getElementById('fuzzInfo'),
+    startHint: document.getElementById('startHint'),
+  };
+
+  const fields = [el.url, el.headers, el.body];
+  let fuzzOriginal = null;
+
+  function fuzzCount() {
+    return countFuzz(el.url.value) + countFuzz(el.headers.value) + countFuzz(el.body.value);
+  }
+
+  function updateFuzzInfo(msg) {
+    const n = fuzzCount();
+    const base = n === 1 ? 'FUZZ 位置已就绪' : n === 0 ? '未标记 {{FUZZ}}' : '发现 ' + n + ' 个 {{FUZZ}}，只能保留一个';
+    el.fuzzInfo.textContent = (msg ? msg + '\n' : '') + base + (fuzzOriginal != null ? `（基线原始值: ${fuzzOriginal}）` : '');
+    if (onFuzzChange) onFuzzChange(n);
+  }
+
+  el.markFuzz.addEventListener('click', () => {
+    const active = document.activeElement;
+    if (!fields.includes(active)) {
+      updateFuzzInfo('请先把光标移到 URL / 请求头 / 请求体 输入框');
+      return;
+    }
+    const r = wrapSelection(active.value, active.selectionStart, active.selectionEnd);
+    if (!r) {
+      updateFuzzInfo('请先选中要变异的文字，再点"标记选中为 FUZZ"');
+      return;
+    }
+    fuzzOriginal = r.original;
+    active.value = r.text;
+    updateFuzzInfo('已标记（原文已记录，将用作基线）');
+  });
+
+  el.clearFuzz.addEventListener('click', () => {
+    if (fuzzOriginal != null) {
+      for (const f of fields) {
+        if (countFuzz(f.value)) f.value = f.value.replace(/\{\{\s*FUZZ(:[a-z]+)?\s*\}\}/gi, fuzzOriginal);
+      }
+    } else {
+      for (const f of fields) f.value = f.value.replace(/\{\{\s*FUZZ(:[a-z]+)?\s*\}\}/gi, '');
+    }
+    fuzzOriginal = null;
+    updateFuzzInfo();
+  });
+
+  for (const f of fields) f.addEventListener('input', () => updateFuzzInfo());
+
+  el.rangeFill.addEventListener('click', () => {
+    const from = Number(el.rangeFrom.value);
+    const to = Number(el.rangeTo.value);
+    const step = Math.max(1, Number(el.rangeStep.value) || 1);
+    if (!Number.isFinite(from) || !Number.isFinite(to) || from > to) {
+      el.startHint.textContent = '区间参数不合法';
+      return;
+    }
+    const lines = [];
+    for (let v = from; v <= to && lines.length <= 1000; v += step) lines.push(String(v));
+    el.payload.value = lines.join('\n');
+    updateEstimate();
+  });
+
+  function parseHeaders(text) {
+    return text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        const i = l.indexOf(':');
+        if (i <= 0) return null;
+        return { name: l.slice(0, i).trim(), valueTemplate: l.slice(i + 1).trim() };
+      })
+      .filter(Boolean);
+  }
+
+  function parseIgnoreRules(text) {
+    return text
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .map((l) => {
+        try {
+          return JSON.parse(l);
+        } catch {
+          return null;
+        }
+      })
+      .filter((r) => r && r.pattern);
+  }
+
+  /** 从编辑器读取 RequestTemplate；host 以当前 URL 为准 */
+  function readTemplate() {
+    let originHost = '';
+    try {
+      originHost = new URL(el.url.value.trim()).host;
+    } catch {
+      return null;
+    }
+    return {
+      id: 'manual',
+      source: 'manual',
+      method: el.method.value,
+      urlTemplate: el.url.value.trim(),
+      headers: parseHeaders(el.headers.value),
+      bodyTemplate: el.body.value === '' ? null : el.body.value,
+      originHost,
+      fuzzOriginal,
+    };
+  }
+
+  function fillTemplate(tpl) {
+    el.method.value = tpl.method;
+    el.url.value = tpl.urlTemplate;
+    el.headers.value = tpl.headers.map((h) => `${h.name}: ${h.valueTemplate}`).join('\n');
+    el.body.value = tpl.bodyTemplate ?? '';
+    fuzzOriginal = tpl.fuzzOriginal ?? null;
+    updateFuzzInfo();
+  }
+
+  function readConfig() {
+    const payloads = el.payload.value
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean);
+    return {
+      payloads,
+      ratePerSec: Number(document.getElementById('rate').value) || 2,
+      followRedirect: document.getElementById('followRedirect').checked,
+      baselineRuns: 3,
+      timeoutMs: 15000,
+      ignoreRules: parseIgnoreRules(el.ignore.value),
+    };
+  }
+
+  function updateEstimate() {
+    const n = el.payload.value.split('\n').filter((l) => l.trim()).length;
+    const rate = Number(document.getElementById('rate').value) || 2;
+    const est = Math.round((n + 3) / rate);
+    el.startHint.textContent = n ? `共 ${n} 条 payload，预计 ~${est < 60 ? est + 's' : Math.round(est / 60) + 'min'}（含 3 次基线）` : '';
+  }
+  [el.payload, document.getElementById('rate')].forEach((x) => x.addEventListener('input', updateEstimate));
+
+  return { fillTemplate, readTemplate, readConfig, fuzzCount, updateEstimate, fields };
+}

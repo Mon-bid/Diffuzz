@@ -1,0 +1,148 @@
+:root {
+  --bg: #202124;
+  --bg2: #292a2d;
+  --bg3: #313336;
+  --fg: #e8eaed;
+  --dim: #9aa0a6;
+  --accent: #8ab4f8;
+  --warn: #fdd663;
+  --bad: #f28b82;
+  --good: #81c995;
+  --line: #3c4043;
+  font-size: 12px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: system-ui, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+  overflow: hidden;
+}
+
+#topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  background: var(--bg2);
+  border-bottom: 1px solid var(--line);
+  flex: 0 0 auto;
+}
+.brand { font-weight: 700; color: var(--accent); font-size: 14px; }
+.notice { color: var(--warn); font-size: 11px; }
+.spacer { flex: 1; }
+.mini { color: var(--dim); display: inline-flex; align-items: center; gap: 4px; }
+
+#cols {
+  display: grid;
+  grid-template-columns: 260px 1.1fr 1.3fr;
+  gap: 8px;
+  padding: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.col {
+  background: var(--bg2);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-height: 0;
+}
+.col h2 { margin: 0 0 2px; font-size: 12px; color: var(--dim); font-weight: 600; }
+
+input, select, textarea, button {
+  background: var(--bg3);
+  color: var(--fg);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: inherit;
+}
+input:focus, textarea:focus, select:focus { outline: 1px solid var(--accent); }
+textarea { font-family: Consolas, monospace; resize: vertical; width: 100%; }
+input[type='search'], input[type='text'], input[type='number'] { width: 100%; }
+input[type='checkbox'] { width: auto; }
+
+.row { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.lbl { color: var(--dim); font-size: 11px; margin-top: 2px; }
+.hint { color: var(--dim); font-size: 11px; white-space: pre-wrap; }
+
+.btn { cursor: pointer; }
+.btn.primary { background: var(--accent); color: #202124; font-weight: 700; border: none; padding: 6px 14px; }
+.btn.ghost { background: transparent; }
+.btn:disabled { opacity: 0.4; cursor: default; }
+
+.list {
+  list-style: none;
+  margin: 0; padding: 0;
+  flex: 1;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+}
+.list li {
+  padding: 4px 6px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--line);
+  font-family: Consolas, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.list li:hover { background: var(--bg3); }
+.list li.active { background: #1f3a5f; }
+.list .m { color: var(--dim); margin-right: 4px; }
+
+details summary { cursor: pointer; color: var(--dim); font-size: 11px; }
+details { display: flex; flex-direction: column; gap: 4px; }
+
+/* 结果表 */
+.tbl-wrap { flex: 1; overflow-y: auto; min-height: 80px; }
+table { width: 100%; border-collapse: collapse; font-size: 11px; font-family: Consolas, monospace; }
+th, td { text-align: left; padding: 3px 6px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { color: var(--dim); position: sticky; top: 0; background: var(--bg2); }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--bg3); }
+tbody tr.sel { background: #1f3a5f; }
+tr.anom { color: var(--bad); font-weight: 700; }
+tr.anom .star { margin-right: 2px; }
+tr .star { visibility: hidden; color: var(--warn); }
+tr.anom .star { visibility: visible; }
+td.num { text-align: right; }
+
+/* 差异视图 */
+.diff { border-top: 1px solid var(--line); padding-top: 6px; display: flex; flex-direction: column; gap: 6px; }
+.diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; max-height: 240px; }
+.diff-pane {
+  margin: 0; padding: 6px;
+  background: var(--bg3); border-radius: 4px;
+  font-family: Consolas, monospace; font-size: 11px;
+  overflow: auto; white-space: pre-wrap; word-break: break-all;
+}
+.d-add { background: rgba(129, 201, 149, 0.18); }
+.d-del { background: rgba(242, 139, 130, 0.18); text-decoration: line-through; }
+
+#statusbar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 5px 10px;
+  background: var(--bg2);
+  border-top: 1px solid var(--line);
+  flex: 0 0 auto;
+  color: var(--dim);
+}
+#statusbar.running { color: var(--good); }
+#statusbar.paused { color: var(--warn); }
+#statusbar.error { color: var(--bad); }

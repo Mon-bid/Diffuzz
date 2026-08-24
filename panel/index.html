@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Diffuzz</title>
+<link rel="stylesheet" href="panel.css">
+</head>
+<body>
+<header id="topbar">
+  <span class="brand">Diffuzz</span>
+  <span class="notice">仅用于已获授权的测试目标</span>
+  <span class="spacer"></span>
+  <label class="mini">限速
+    <input id="rate" type="number" min="0.2" max="5" step="0.1" value="2"> /s
+  </label>
+  <label class="mini"><input id="followRedirect" type="checkbox" checked> 跟随跳转</label>
+  <label class="mini"><input id="allowIntranet" type="checkbox"> 允许内网目标</label>
+</header>
+
+<main id="cols">
+  <!-- ① 请求来源 -->
+  <section class="col" id="col-source">
+    <h2>请求来源</h2>
+    <input id="captureFilter" type="search" placeholder="过滤 URL…">
+    <ul id="captureList" class="list"></ul>
+    <details>
+      <summary>粘贴 cURL 导入</summary>
+      <textarea id="curlInput" rows="4" placeholder="curl 'https://…' -H '…' --data-raw '…'"></textarea>
+      <button id="curlImport" class="btn">导入 cURL</button>
+    </details>
+  </section>
+
+  <!-- ② 模板编辑器 -->
+  <section class="col" id="col-editor">
+    <h2>模板编辑器</h2>
+    <div class="row">
+      <select id="method">
+        <option>GET</option><option>POST</option><option>PUT</option>
+        <option>PATCH</option><option>DELETE</option><option>HEAD</option>
+      </select>
+      <input id="urlInput" type="text" placeholder="https://…/{{FUZZ}}" spellcheck="false">
+    </div>
+    <label class="lbl">请求头（每行 K: V，可含 {{FUZZ}}）</label>
+    <textarea id="headersInput" rows="5" spellcheck="false" placeholder="Authorization: Bearer eyJ…"></textarea>
+    <label class="lbl">请求体（可含 {{FUZZ}}）</label>
+    <textarea id="bodyInput" rows="5" spellcheck="false" placeholder='{ "uid": "{{FUZZ}}" }'></textarea>
+    <div class="row">
+      <button id="markFuzz" class="btn" title="把当前输入框中选中的文字标记为 {{FUZZ}}">标记选中为 FUZZ</button>
+      <button id="clearFuzz" class="btn ghost">清除 FUZZ</button>
+      <button id="replay" class="btn ghost">原样重放</button>
+    </div>
+    <div id="fuzzInfo" class="hint"></div>
+
+    <label class="lbl">Payload（每行一个，≤1000）</label>
+    <textarea id="payloadInput" rows="4" spellcheck="false" placeholder="1001&#10;1002&#10;1003"></textarea>
+    <div class="row">
+      <input id="rangeFrom" type="number" placeholder="起" style="width:70px">
+      <input id="rangeTo" type="number" placeholder="止" style="width:70px">
+      <input id="rangeStep" type="number" placeholder="步长" style="width:60px" value="1">
+      <button id="rangeFill" class="btn ghost">数字区间生成</button>
+    </div>
+
+    <details>
+      <summary>忽略规则（正文归一化，正则）</summary>
+      <textarea id="ignoreInput" rows="3" spellcheck="false" placeholder='{"pattern":"\"balance\":\\d+", "replacement":"\"balance\":<n>"}  每行一条 JSON'></textarea>
+    </details>
+
+    <button id="start" class="btn primary">▶ 开始</button>
+    <div id="startHint" class="hint"></div>
+  </section>
+
+  <!-- ③ 结果分析 -->
+  <section class="col" id="col-results">
+    <h2>结果分析</h2>
+    <div id="baselineBox" class="hint">尚无基线</div>
+    <div class="row">
+      <select id="sortBy">
+        <option value="score">按异常分</option>
+        <option value="seq">按序号</option>
+        <option value="status">按状态码</option>
+        <option value="len">按长度</option>
+        <option value="time">按耗时</option>
+      </select>
+      <span class="spacer"></span>
+      <button id="exportCsv" class="btn ghost">导出 CSV</button>
+      <button id="exportJson" class="btn ghost">导出 JSON</button>
+    </div>
+    <div class="tbl-wrap">
+      <table id="resultTable">
+        <thead>
+          <tr><th>#</th><th>payload</th><th>状态</th><th>长度</th><th>耗时</th><th>分</th></tr>
+        </thead>
+        <tbody id="resultBody"></tbody>
+      </table>
+      <button id="moreRows" class="btn ghost" hidden>显示更多</button>
+    </div>
+
+    <div id="diffViewer" class="diff" hidden>
+      <div class="row">
+        <strong id="diffTitle">差异对比</strong>
+        <span class="spacer"></span>
+        <button id="diffClose" class="btn ghost">关闭</button>
+      </div>
+      <div id="diffSignals" class="hint"></div>
+      <div class="diff-cols">
+        <pre id="diffLeft" class="diff-pane"></pre>
+        <pre id="diffRight" class="diff-pane"></pre>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer id="statusbar">
+  <span id="statusText">空闲</span>
+  <span class="spacer"></span>
+  <button id="pauseBtn" class="btn ghost" disabled>暂停</button>
+  <button id="abortBtn" class="btn ghost" disabled>终止</button>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
