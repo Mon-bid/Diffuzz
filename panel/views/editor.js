@@ -176,35 +176,5 @@ export function initEditor({ onFuzzChange }) {
   }
   [el.payload, document.getElementById('rate')].forEach((x) => x.addEventListener('input', updateEstimate));
 
-  // 大窗口编辑层：大字典时小输入框的滚动条没法用
-  const ov = document.getElementById('payloadOverlay');
-  const big = document.getElementById('payloadBig');
-  const bigCount = document.getElementById('payloadBigCount');
-  document.getElementById('payloadFull').addEventListener('click', () => {
-    big.value = el.payload.value;
-    updateBigCount();
-    ov.hidden = false;
-  });
-  document.getElementById('payloadBigCancel').addEventListener('click', () => {
-    ov.hidden = true;
-  });
-  // Esc 或点击遮罩空白处关闭
-  document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape' && !ov.hidden) ov.hidden = true;
-  });
-  ov.addEventListener('click', (e) => {
-    if (e.target === ov) ov.hidden = true;
-  });
-  document.getElementById('payloadBigSave').addEventListener('click', () => {
-    el.payload.value = big.value;
-    ov.hidden = true;
-    updateEstimate();
-  });
-  big.addEventListener('input', updateBigCount);
-  function updateBigCount() {
-    const n = big.value.split('\n').filter((l) => l.trim()).length;
-    bigCount.textContent = n ? `${n} 条` : '';
-  }
-
   return { fillTemplate, readTemplate, readConfig, fuzzCount, updateEstimate, fields };
 }
