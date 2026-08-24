@@ -164,6 +164,8 @@ export function initEditor({ onFuzzChange }) {
 
   function updateEstimate() {
     const n = el.payload.value.split('\n').filter((l) => l.trim()).length;
+    const cnt = document.getElementById('payloadCount');
+    if (cnt) cnt.textContent = n ? `当前 ${n} 条` : '';
     const rate = Number(document.getElementById('rate').value) || 2;
     const est = Math.round((n + 3) / rate);
     const estStr = est < 60 ? est + 's' : est < 3600 ? Math.round(est / 60) + 'min' : (est / 3600).toFixed(1) + 'h';
@@ -173,6 +175,29 @@ export function initEditor({ onFuzzChange }) {
     el.startHint.textContent = n ? `共 ${n} 条 payload，预计 ~${estStr}（含 3 次基线）${warn}` : '';
   }
   [el.payload, document.getElementById('rate')].forEach((x) => x.addEventListener('input', updateEstimate));
+
+  // 大窗口编辑层：大字典时小输入框的滚动条没法用
+  const ov = document.getElementById('payloadOverlay');
+  const big = document.getElementById('payloadBig');
+  const bigCount = document.getElementById('payloadBigCount');
+  document.getElementById('payloadFull').addEventListener('click', () => {
+    big.value = el.payload.value;
+    updateBigCount();
+    ov.hidden = false;
+  });
+  document.getElementById('payloadBigCancel').addEventListener('click', () => {
+    ov.hidden = true;
+  });
+  document.getElementById('payloadBigSave').addEventListener('click', () => {
+    el.payload.value = big.value;
+    ov.hidden = true;
+    updateEstimate();
+  });
+  big.addEventListener('input', updateBigCount);
+  function updateBigCount() {
+    const n = big.value.split('\n').filter((l) => l.trim()).length;
+    bigCount.textContent = n ? `${n} 条` : '';
+  }
 
   return { fillTemplate, readTemplate, readConfig, fuzzCount, updateEstimate, fields };
 }

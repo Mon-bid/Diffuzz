@@ -131,7 +131,11 @@ $('pauseBtn').addEventListener('click', () => {
   if (running) sendMsg({ type: 'task/pause' });
   else if (state.snapshot && state.snapshot.task && state.snapshot.task.status === 'paused') sendMsg({ type: 'task/resume' });
 });
-$('abortBtn').addEventListener('click', () => sendMsg({ type: 'task/abort' }));
+$('abortBtn').addEventListener('click', () => {
+  $('statusText').textContent = '正在终止…（中断在途请求）';
+  $('statusbar').className = 'paused';
+  sendMsg({ type: 'task/abort' });
+});
 
 // ---------- SW 通信 ----------
 function sendMsg(msg) {

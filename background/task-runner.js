@@ -107,8 +107,27 @@ export class TaskRunner {
   abort() {
     this.aborted = true;
     this.resume(); // 唤醒可能在等待的循环
-    if (this.task && !/done|aborted|error/.test(this.task.status)) this.task.status = 'aborted';
-    this.broadcast({ type: 'task/state', snapshot: this.snapshot() });
+    // 立刻掐断在途请求，避免等 fetch 超时
+    if (this._curAbort) {
+      try {
+        this._curAbort.abort();
+      } catch {}
+    }
+    if (this.task && !/done|aborted|error/.test(this.task.status)) {
+      this.task.status = 'aborted';
+      this.broadcast({ type: 'task/state', snapshot: this.snapshot() });
+    }
+    this.broadcast({ type: 'task/aborting' });
+  }
+
+  /** 发送一条（统一挂上可中断信号） */
+  async send(req, config) {
+    this._curAbort = new AbortController();
+    try {
+      return await sendOnce({ ...req, followRedirect: config.followRedirect, timeoutMs: config.timeoutMs, signal: this._curAbort.signal });
+    } finally {
+      this._curAbort = null;
+    }
   }
 
   async waitWhilePaused() {
@@ -160,7 +179,8 @@ export class TaskRunner {
           if (this.aborted) break;
           await limiter.wait();
           const req = renderBaseline(template);
-          const rec = await sendOnce({ ...req, followRedirect: config.followRedirect, timeoutMs: config.timeoutMs });
+          const rec = await this.send(req, config);
+          if (this.aborted && rec.networkError === 'aborted') break;
           this.baselineRecords.push(this.decorate(rec, null, template, config));
         }
         this.baseline = buildBaseline(this.baselineRecords);
@@ -198,7 +218,8 @@ export class TaskRunner {
 
           await limiter.wait();
           if (this.aborted) break;
-          const rec = await sendOnce({ ...req, followRedirect: config.followRedirect, timeoutMs: config.timeoutMs });
+          const rec = await this.send(req, config);
+          if (this.aborted && rec.networkError === 'aborted') break; // 被终止的请求不入表
           const decorated = this.decorate(rec, payload, template, config);
           decorated.seq = i + 1;
           this.records.push(decorated);

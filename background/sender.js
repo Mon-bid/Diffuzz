@@ -93,9 +93,19 @@ async function readCapped(res, cap) {
 
 /**
  * 发送一条请求并采集响应。
+ * @param {object} opts
+ * @param {AbortSignal} [opts.signal] 外部中断信号（终止任务时立即掐断在途请求）
  * @returns {Promise<object>} ResponseRecord（不含 fingerprint，由调用方补）
  */
-export async function sendOnce({ url, method, headers = [], body, followRedirect = true, timeoutMs = 15000 }) {
+export async function sendOnce({ url, method, headers = [], body, followRedirect = true, timeoutMs = 15000, signal }) {
+  // 合并超时与外部中断信号（不用 AbortSignal.any，兼容面更大）
+  const ctl = new AbortController();
+  const onExternalAbort = () => ctl.abort();
+  if (signal) {
+    if (signal.aborted) ctl.abort();
+    else signal.addEventListener('abort', onExternalAbort);
+  }
+  const timer = setTimeout(() => ctl.abort(), timeoutMs);
   const direct = [];
   const override = [];
   for (const h of headers) {
@@ -112,7 +122,7 @@ export async function sendOnce({ url, method, headers = [], body, followRedirect
     credentials: 'include',
     redirect: followRedirect ? 'follow' : 'manual',
     cache: 'no-store',
-    signal: AbortSignal.timeout(timeoutMs),
+    signal: ctl.signal,
   };
   if (body != null && method !== 'GET' && method !== 'HEAD') init.body = body;
 
@@ -157,14 +167,21 @@ export async function sendOnce({ url, method, headers = [], body, followRedirect
       capped,
     };
   } catch (err) {
+    const aborted = signal && signal.aborted;
     return {
       ok: false,
-      networkError: err && err.name === 'TimeoutError' ? 'timeout' : String((err && err.message) || err),
+      networkError: aborted
+        ? 'aborted'
+        : err && err.name === 'TimeoutError'
+          ? 'timeout'
+          : String((err && err.message) || err),
       status: 0, statusText: '', finalUrl: url, redirectSig: '',
       headers: {}, bodyBytes: 0, bodyText: '', bodySha256: '',
       contentType: '', timingMs: Math.round(performance.now() - t0),
     };
   } finally {
+    clearTimeout(timer);
+    if (signal) signal.removeEventListener('abort', onExternalAbort);
     if (ruleIds.length) removeHeaderRules(ruleIds);
   }
 }

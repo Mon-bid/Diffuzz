@@ -63,13 +63,14 @@
     </div>
     <div id="fuzzInfo" class="hint"></div>
 
-    <label class="lbl">Payload（每行一个，≤1000）</label>
+    <label class="lbl">Payload（每行一个，≤10000）<span id="payloadCount" class="hint" style="margin-left:6px"></span></label>
     <textarea id="payloadInput" rows="4" spellcheck="false" placeholder="1001&#10;1002&#10;1003"></textarea>
     <div class="row">
       <input id="rangeFrom" type="number" placeholder="起" style="width:70px">
       <input id="rangeTo" type="number" placeholder="止" style="width:70px">
       <input id="rangeStep" type="number" placeholder="步长" style="width:60px" value="1">
       <button id="rangeFill" class="btn ghost">数字区间生成</button>
+      <button id="payloadFull" class="btn ghost" title="大字典建议用大窗口编辑">大窗口编辑</button>
     </div>
 
     <details>
@@ -142,6 +143,20 @@
   <button id="pauseBtn" class="btn ghost" disabled>暂停</button>
   <button id="abortBtn" class="btn ghost" disabled>终止</button>
 </footer>
+
+<!-- 大窗口 Payload 编辑层 -->
+<div id="payloadOverlay" hidden>
+  <div class="ov-box">
+    <div class="row">
+      <strong>Payload 编辑（大窗口）</strong>
+      <span class="hint" id="payloadBigCount"></span>
+      <span class="spacer"></span>
+      <button id="payloadBigCancel" class="btn ghost">取消</button>
+      <button id="payloadBigSave" class="btn primary">保存</button>
+    </div>
+    <textarea id="payloadBig" spellcheck="false"></textarea>
+  </div>
+</div>
 
 <script type="module" src="app.js"></script>
 </body>
