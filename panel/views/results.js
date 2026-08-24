@@ -65,7 +65,7 @@ export function initResults({ onSelectRow }) {
           : `<td>${r.networkError ? 'ERR' : r.status}</td>
              <td class="num">${fmtBytes(r.fingerprint ? r.fingerprint.lenNorm : 0)}</td>
              <td class="num">${r.timingMs}ms</td>
-             <td class="num">${d ? d.anomalyScore.toFixed(1) : '-'}<span class="star">★</span></td>`,
+             <td class="num">${d ? d.anomalyScore.toFixed(1) : '-'}</td>`,
       ];
       tr.innerHTML = cells.join('');
       tr.addEventListener('click', () => {

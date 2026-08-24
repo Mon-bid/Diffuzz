@@ -144,9 +144,6 @@ tbody tr { cursor: pointer; }
 tbody tr:hover { background: var(--bg3); }
 tbody tr.sel { background: #1f3a5f; }
 tr.anom { color: var(--bad); font-weight: 700; }
-tr.anom .star { margin-right: 2px; }
-tr .star { visibility: hidden; color: var(--warn); }
-tr.anom .star { visibility: visible; }
 td.num { text-align: right; }
 
 /* 差异视图 */
