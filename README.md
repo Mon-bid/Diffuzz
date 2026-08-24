@@ -74,15 +74,15 @@ node test/server.mjs 8787
 
 - `redirect: 'manual'` 模式下 Chrome 返回 opaque-redirect，读不到 Location 细节；默认使用"跟随跳转"，通过最终 URL 判定跳转。
 - 部分流式上传的 POST 请求 HAR 中拿不到请求体，面板会显示为空，需手动补全。
-- Service Worker 被浏览器回收会导致运行中任务中断（正常速率下不会发生），面板会提示重新发起。
+- 任务在 DevTools 面板页面内执行：**关闭 DevTools / 切换浏览器窗口不会中断，但关闭整个 DevTools 面板会终止任务**（面板重开即新任务）。
 
 ## 目录结构
 
 ```
-manifest.json          # MV3
+manifest.json          # MV3（无后台 Service Worker）
 devtools/              # DevTools 入口，注册面板
-panel/                 # 面板 UI（捕获列表 / 模板编辑 / 结果 / 差异对比）
-background/            # SW：任务状态机 + fetch 发送 + DNR 头覆盖 + 限速
+panel/                 # 面板 UI 与任务执行（捕获列表 / 模板编辑 / 结果 / 差异对比）
+background/            # 发送链路模块（fetch + DNR 头覆盖 + 限速 + 任务机，由面板直接调用）
 core/                  # 纯逻辑：模板 / 归一化 / 指纹 / 差异引擎 / HAR/cURL 导入
 test/                  # 单测 + 本地靶机
 ```

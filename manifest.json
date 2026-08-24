@@ -5,10 +5,6 @@
   "description": "授权测试用的请求变异与响应差异分析 DevTools 面板。仅用于已获授权的目标。Request fuzzing & response diffing panel for authorized testing only.",
   "minimum_chrome_version": "116",
   "devtools_page": "devtools/devtools.html",
-  "background": {
-    "service_worker": "background/service-worker.js",
-    "type": "module"
-  },
   "permissions": ["storage", "declarativeNetRequest"],
   "host_permissions": ["http://*/*", "https://*/*"]
 }

@@ -7,6 +7,8 @@ import { initDiffViewer } from './views/diff-viewer.js';
 import { initDictManager } from './views/dict-manager.js';
 import { harToTemplate, parseCurl } from '../core/har-adapter.js';
 import { analyze } from '../core/diff-engine.js';
+import { TaskRunner } from '../background/task-runner.js';
+import { sendOnce } from '../background/sender.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -74,7 +76,8 @@ $('start').addEventListener('click', async () => {
       ignore: $('ignoreInput').value,
     },
   });
-  const resp = await sendMsg({ type: 'task/start', template, config, allowIntranet: $('allowIntranet').checked });
+  runner.allowIntranet = $('allowIntranet').checked;
+  const resp = await runner.start({ template, config });
   if (!resp || !resp.ok) {
     const err = (resp && resp.error) || '启动失败（Service Worker 无响应）';
     $('startHint').textContent = '✗ ' + err;
@@ -108,47 +111,35 @@ $('replay').addEventListener('click', async () => {
     $('startHint').textContent = '重放使用原始模板（含 {{FUZZ}} 字面值）';
   }
   $('statusText').textContent = '重放中…';
-  const resp = await sendMsg({
-    type: 'debug/replay',
+  const r = await sendOnce({
     url: template.urlTemplate,
     method: template.method,
     headers: template.headers.map((h) => ({ name: h.name, value: h.valueTemplate })),
     body: template.bodyTemplate,
     followRedirect: $('followRedirect').checked,
   });
-  if (resp && resp.ok) {
-    const r = resp.record;
-    $('statusText').textContent = `重放: ${r.networkError ? 'ERR ' + r.networkError : r.status + ' ' + r.statusText + ' · ' + r.bodyBytes + 'B · ' + r.timingMs + 'ms'}`;
-    console.log('[Diffuzz] 重放响应', r);
-  } else {
-    $('statusText').textContent = '重放失败';
-  }
+  $('statusText').textContent = `重放: ${r.networkError ? 'ERR ' + r.networkError : r.status + ' ' + r.statusText + ' · ' + r.bodyBytes + 'B · ' + r.timingMs + 'ms'}`;
+  console.log('[Diffuzz] 重放响应', r);
 });
 
-// ---------- 任务控制 ----------
+// ---------- 任务控制（直接调用，不再跨进程通信） ----------
 $('pauseBtn').addEventListener('click', () => {
-  const running = state.snapshot && state.snapshot.task && /baselining|running/.test(state.snapshot.task.status);
-  if (running) sendMsg({ type: 'task/pause' });
-  else if (state.snapshot && state.snapshot.task && state.snapshot.task.status === 'paused') sendMsg({ type: 'task/resume' });
+  const t = state.snapshot && state.snapshot.task;
+  if (!t) return;
+  if (/baselining|running/.test(t.status)) runner.pause('user');
+  else if (t.status === 'paused') runner.resume();
 });
 $('abortBtn').addEventListener('click', () => {
   $('statusText').textContent = '正在终止…（中断在途请求）';
   $('statusbar').className = 'paused';
-  sendMsg({ type: 'task/abort' });
+  runner.abort();
 });
 
-// ---------- SW 通信 ----------
-function sendMsg(msg) {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(msg, (r) => {
-      if (chrome.runtime.lastError) resolve(null);
-      else resolve(r);
-    });
-  });
-}
+// 任务运行器：跑在面板自己的页面里（DevTools 开着它就活着）
+const runner = new TaskRunner();
+runner.addPort({ postMessage: handleTaskEvent, onDisconnect: { addListener() {} } });
 
-const port = chrome.runtime.connect({ name: 'diffuzz-panel' });
-port.onMessage.addListener((msg) => {
+function handleTaskEvent(msg) {
   if (msg.type === 'task/state') applySnapshot(msg.snapshot);
   else if (msg.type === 'task/baseline') {
     if (state.snapshot) {
@@ -179,7 +170,7 @@ port.onMessage.addListener((msg) => {
   } else if (msg.type === 'task/done') {
     applySnapshot(msg.snapshot);
   }
-});
+}
 
 function applySnapshot(snapshot) {
   state.snapshot = snapshot;
@@ -265,10 +256,8 @@ function onSelectRow(record, diff) {
   diffViewer.show(baselineRecord, record, diff);
 }
 
-// 面板打开时拉取当前任务状态
-sendMsg({ type: 'task/state' }).then((resp) => {
-  if (resp && resp.ok && resp.snapshot) applySnapshot(resp.snapshot);
-});
+// 面板重开时没有跨进程状态可恢复（任务在面板关闭时即终止）
+if (runner.task) applySnapshot(runner.snapshot());
 
 // 全局错误兜底：面板内任何未捕获异常直接显示在状态栏，避免"无声空白"
 window.addEventListener('error', (e) => {
