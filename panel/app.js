@@ -4,6 +4,7 @@ import { initRequestList } from './views/request-list.js';
 import { initEditor } from './views/editor.js';
 import { initResults } from './views/results.js';
 import { initDiffViewer } from './views/diff-viewer.js';
+import { initDictManager } from './views/dict-manager.js';
 import { harToTemplate, parseCurl } from '../core/har-adapter.js';
 
 const $ = (id) => document.getElementById(id);
@@ -15,6 +16,15 @@ const state = {
 const editor = initEditor({ onFuzzChange: updateStartState });
 const results = initResults({ onSelectRow: onSelectRow });
 const diffViewer = initDiffViewer();
+
+// 字典库：载入 = 填入 Payload 编辑框
+initDictManager({
+  onLoad: (content, name) => {
+    document.getElementById('payloadInput').value = content;
+    editor.updateEstimate();
+    $('startHint').textContent = `已载入字典 "${name}"`;
+  },
+});
 
 // ---------- 请求来源 ----------
 const requestList = initRequestList({ onSelect: (item) => {

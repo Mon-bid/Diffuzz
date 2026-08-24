@@ -73,7 +73,7 @@ export function initEditor({ onFuzzChange }) {
       return;
     }
     const lines = [];
-    for (let v = from; v <= to && lines.length <= 1000; v += step) lines.push(String(v));
+    for (let v = from; v <= to && lines.length <= 2000; v += step) lines.push(String(v));
     el.payload.value = lines.join('\n');
     updateEstimate();
   });
@@ -136,10 +136,14 @@ export function initEditor({ onFuzzChange }) {
   }
 
   function readConfig() {
-    const payloads = el.payload.value
-      .split('\n')
-      .map((l) => l.trim())
-      .filter(Boolean);
+    const seen = new Set();
+    const payloads = [];
+    for (const line of el.payload.value.split('\n')) {
+      const v = line.trim();
+      if (!v || seen.has(v)) continue; // 去重，保序
+      seen.add(v);
+      payloads.push(v);
+    }
     return {
       payloads,
       ratePerSec: Number(document.getElementById('rate').value) || 2,

@@ -61,6 +61,16 @@
     </div>
 
     <details>
+      <summary>字典库（保存 / 导入 / 复用）</summary>
+      <div class="row">
+        <input id="dictName" type="text" placeholder="字典名，如 常用弱口令">
+        <button id="dictSave" class="btn ghost">把 Payload 存为字典</button>
+        <label class="btn ghost" style="cursor:pointer">导入 .txt<input id="dictImport" type="file" accept=".txt,.dic,.lst,.csv" hidden></label>
+      </div>
+      <ul id="dictList" class="dict-list"></ul>
+    </details>
+
+    <details>
       <summary>忽略规则（正文归一化，正则）</summary>
       <textarea id="ignoreInput" rows="3" spellcheck="false" placeholder='{"pattern":"\"balance\":\\d+", "replacement":"\"balance\":<n>"}  每行一条 JSON'></textarea>
     </details>

@@ -8,7 +8,7 @@ import { normalizeBody } from '../core/normalize.js';
 import { makeFingerprint } from '../core/fingerprint.js';
 import { buildBaseline, analyze } from '../core/diff-engine.js';
 
-const MAX_PAYLOADS = 1000;
+const MAX_PAYLOADS = 2000;
 const MAX_BODY_TEMPLATE = 512 * 1024;
 const ERROR_STREAK_PAUSE = 5;
 
@@ -255,7 +255,11 @@ export class TaskRunner {
       normalizedBody,
       contentType: rec.contentType,
     });
-    return { payload, ...rec, fingerprint };
+    // 控制内存：正文全文截断到 32KB（差异对比够用；归一化已在此之前完成）
+    const bodyText = rec.bodyText && rec.bodyText.length > 32768
+      ? rec.bodyText.slice(0, 32768) + '\n<截断于32KB>'
+      : rec.bodyText;
+    return { payload, ...rec, bodyText, fingerprint };
   }
 
   finish() {
