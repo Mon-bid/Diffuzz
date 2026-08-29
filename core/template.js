@@ -21,11 +21,29 @@ export function locateFuzz(template) {
   return positions;
 }
 
+/**
+ * URL 场景的宽松编码：只转义会破坏 URL 结构的字符（引号、空格、控制符、`#` 等），
+ * 而保留 `/` `?` `&` `=` `:` `@` `.` `-` `_` `~` 等路径/查询语法字符。
+ * 否则 `[{FUZZ}]` 紧跟 host、payload 又以 `/` 开头时，`/` 会被编成 `%2F` 拼进 host，
+ * 导致同源锁定误判"host 变更"而整条跳过。
+ * （`//evil.com`、`../` 这类真正改 host/越权的 payload 仍由 task-runner 的同源锁定拦截。）
+ */
+const URL_SAFE_PRESERVE = /[;/?:@&=+$,\-_.!~*'()%#]/;
+
+function encodeUrlSegment(s) {
+  let out = '';
+  for (const ch of String(s)) {
+    if (/[A-Za-z0-9]/.test(ch) || URL_SAFE_PRESERVE.test(ch)) out += ch;
+    else out += encodeURIComponent(ch);
+  }
+  return out;
+}
+
 function renderText(text, payload, encodeByDefault) {
   return String(text).replace(FUZZ_RE, (_, mode) => {
     if (mode === 'urlencode') return encodeURIComponent(payload);
     if (mode === 'plain') return payload;
-    return encodeByDefault ? encodeURIComponent(payload) : payload;
+    return encodeByDefault ? encodeUrlSegment(payload) : payload;
   });
 }
 
