@@ -6,6 +6,8 @@ import { tokenize, simhash64, makeFingerprint, hammingHex } from '../core/finger
 import { buildBaseline, analyze, clusterKey, WEIGHTS } from '../core/diff-engine.js';
 import { harToTemplate, parseCurl } from '../core/har-adapter.js';
 import { median, mad, robustZ, hash64 } from '../core/util.js';
+import { buildEncryptCode } from '../core/encrypt-expr.js';
+import { classifySample, scoreCandidate, suggestScript, suggestJsenEncryptScript, looksLikePublicKey, CRYPTO_NAME_RE } from '../core/encrypt-detect.js';
 
 // ---- 构造响应记录的工具 ----
 function rec(seq, payload, { status = 200, body = 'ok', redirect = '', time = 100 } = {}) {
@@ -72,7 +74,8 @@ export const tests = [
         bodyTemplate: '{"id":"{{FUZZ}}"}',
       };
       const r = renderTemplate(tpl, 'a b/c');
-      t.equal(r.url, 'https://a.com/u/a%20b%2Fc?x=1');
+      // URL 场景宽松编码：空档编成 %20，但路径语法字符 '/' 保留，避免误判 host 变更
+      t.equal(r.url, 'https://a.com/u/a%20b/c?x=1');
       t.equal(r.headers[0].value, 'v=a b/c');
       t.equal(r.body, '{"id":"a b/c"}');
     },
@@ -313,6 +316,109 @@ export const tests = [
     fn: (t) => {
       t.equal(parseCurl('not a curl'), null);
       t.equal(parseCurl(''), null);
+    },
+  },
+  // ============ encrypt-expr ============
+  {
+    name: 'encrypt: __VAR__ 被 JSON 字面量替换，返回原始结果表达式',
+    fn: (t) => {
+      const code = buildEncryptCode('window.enc(__VAR__)', 'admin');
+      t.ok(code.startsWith('(function(){return ('));
+      t.ok(code.includes('window.enc('));
+      t.ok(code.includes('"admin"'));
+      t.equal(code.includes('__VAR__'), false);
+      t.doesNotThrow(() => new Function('return (' + code + ')'));
+    },
+  },
+  {
+    name: 'encrypt: 含引号/反斜杠的密码被安全转义（不破坏表达式）',
+    fn: (t) => {
+      const code = buildEncryptCode('window.enc(__VAR__)', 'p"ss\\w0r\'d');
+      // JSON.stringify 会把特殊字符转义，但不会残留未转义的双引号破坏外层
+      t.ok(code.includes('"p\\"ss\\\\w0r\'d"'));
+      t.doesNotThrow(() => new Function('return (' + code + ')'));
+    },
+  },
+  {
+    name: 'encrypt: 数字类型候选值直接内联',
+    fn: (t) => {
+      const code = buildEncryptCode('String(__VAR__)', 1001);
+      t.ok(code.includes('1001'));
+      t.doesNotThrow(() => new Function('return (' + code + ')'));
+    },
+  },
+  // ============ encrypt-detect ============
+  {
+    name: 'detect: 十六进制摘要(md5/sha)被识别为高置信密文',
+    fn: (t) => {
+      const a = classifySample('md5', '5d41402abc4b2a76b9719d911017c592', 'hello');
+      t.equal(a.type, 'digest');
+      t.ok(a.score >= 7);
+      const s = scoreCandidate('encrypt', 'deadbeefcafe1234', 'DiffuzzProbe_123456', true);
+      t.ok(s.score > 8);
+    },
+  },
+  {
+    name: 'detect: 输出=输入会被否决(未加密)',
+    fn: (t) => {
+      const a = classifySample('encode', 'DiffuzzProbe_123456', 'DiffuzzProbe_123456');
+      t.equal(a.type, 'identity');
+      t.ok(a.score < 0);
+    },
+  },
+  {
+    name: 'detect: base64 串识别为密文',
+    fn: (t) => {
+      const a = classifySample('rsaEncrypt', 'SGVsbG8gV29ybGQhIQ==', 'x');
+      t.equal(a.type, 'base64');
+      t.ok(a.score >= 7);
+    },
+  },
+  {
+    name: 'detect: 可复现加分/不可复现减分',
+    fn: (t) => {
+      const a = scoreCandidate('enc', 'abc123', 'DiffuzzProbe_123456', true);
+      const b = scoreCandidate('enc', 'abc123', 'DiffuzzProbe_123456', false);
+      t.ok(a.score > b.score);
+    },
+  },
+  {
+    name: 'detect: suggestScript 按完整访问路径生成包装',
+    fn: (t) => {
+      const s = suggestScript('getApp().getMD5');
+      t.ok(s.includes('getApp().getMD5(__VAR__)'));
+      t.ok(s.startsWith('(function(){'));
+      t.doesNotThrow(() => new Function('return (' + s + ')'));
+      t.ok(suggestScript('window.sm2').includes('window.sm2(__VAR__)'));
+    },
+  },
+  {
+    name: 'detect: 名字正则命中加密字眼',
+    fn: (t) => {
+      t.ok(CRYPTO_NAME_RE.test('encryptPassword'));
+      t.ok(CRYPTO_NAME_RE.test('rsaEncrypt'));
+      t.ok(!CRYPTO_NAME_RE.test('foo'));
+    },
+  },
+  {
+    name: 'detect: 识别前端 RSA 公钥',
+    fn: (t) => {
+      t.ok(looksLikePublicKey('-----BEGIN PUBLIC KEY-----\nMIIB...\n-----END PUBLIC KEY-----'));
+      // 2048 位 RSA 公钥的 base64 DER 足够长（>300 字符）；此处用 MIGf 开头 + 加长填充代表
+      t.ok(looksLikePublicKey('MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBgQCX9' + 'A'.repeat(120)));
+      t.ok(looksLikePublicKey('ab'.repeat(150))); // 长 hex
+      t.ok(!looksLikePublicKey('short'));
+      t.ok(!looksLikePublicKey('MIGfMA0GCSqGSIb3DQEBAQUAA4GNADCBiQKBg')); // 太短
+    },
+  },
+  {
+    name: 'detect: JSEncrypt 包装脚本内嵌公钥且 encrypt 失败给空串',
+    fn: (t) => {
+      const s = suggestJsenEncryptScript(['-----BEGIN PUBLIC KEY-----\nMIIB\n-----END PUBLIC KEY-----']);
+      t.ok(s.includes('new JSEncrypt()'));
+      t.ok(s.includes('setPublicKey'));
+      t.ok(s.includes('__VAR__'));
+      t.doesNotThrow(() => new Function('return (' + s + ')'));
     },
   },
 ];

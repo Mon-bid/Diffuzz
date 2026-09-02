@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Diffuzz",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "授权测试用的请求变异与响应差异分析 DevTools 面板。仅用于已获授权的目标。Request fuzzing & response diffing panel for authorized testing only.",
   "minimum_chrome_version": "116",
   "devtools_page": "devtools/devtools.html",

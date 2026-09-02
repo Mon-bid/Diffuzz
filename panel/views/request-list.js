@@ -91,5 +91,9 @@ export function initRequestList({ onSelect }) {
     });
   }
 
-  return { add, render };
+  function getSelected() {
+    return state.items.find((x) => x.id === state.activeId) || null;
+  }
+
+  return { add, render, getSelected };
 }

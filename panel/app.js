@@ -7,8 +7,13 @@ import { initDiffViewer } from './views/diff-viewer.js';
 import { initDictManager } from './views/dict-manager.js';
 import { harToTemplate, parseCurl } from '../core/har-adapter.js';
 import { analyze } from '../core/diff-engine.js';
+import { renderBaseline } from '../core/template.js';
+import { normalizeBody } from '../core/normalize.js';
+import { makeFingerprint } from '../core/fingerprint.js';
 import { TaskRunner } from '../background/task-runner.js';
 import { sendOnce } from '../background/sender.js';
+import { encryptPayloads, detectEncryptFunctions, installJSenHook, getCapturedPubkey } from './views/encrypt-helper.js';
+import { suggestScript, suggestJsenEncryptScript } from '../core/encrypt-detect.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -101,25 +106,170 @@ chrome.storage.local.get('diffuzzSettings', ({ diffuzzSettings: s }) => {
 editor.updateEstimate();
 
 // ---------- 原样重放 ----------
-$('replay').addEventListener('click', async () => {
-  const template = editor.readTemplate();
-  if (!template) {
-    $('startHint').textContent = 'URL 无法解析';
-    return;
+
+// 重放时剥掉的缓存条件头：带走它们会让服务器校验缓存直接回 304（0B 空正文），
+// 拿不到完整响应；剥掉后才能取得 200 完整正文。
+const REPLAY_DROP_HEADERS = new Set([
+  'cookie', 'content-length', 'accept-encoding',
+  'if-none-match', 'if-modified-since', 'if-match',
+  'if-unmodified-since', 'if-range', 'range',
+]);
+
+/** 从捕获的 HAR 条目构造「尽量原样」的请求。剔除 Cookie（改用浏览器本地登录态 + credentials:include），其余含 origin/referer 交由 DNR 覆盖。 */
+function buildRawRequest(harEntry) {
+  const req = harEntry && harEntry.request;
+  if (!req) return null;
+  const headers = [];
+  for (const h of req.headers || []) {
+    const n = (h.name || '').toLowerCase();
+    if (n.startsWith(':') || REPLAY_DROP_HEADERS.has(n)) continue;
+    headers.push({ name: h.name, value: h.value });
   }
-  if (editor.fuzzCount() > 0) {
-    $('startHint').textContent = '重放使用原始模板（含 {{FUZZ}} 字面值）';
-  }
-  $('statusText').textContent = '重放中…';
-  const r = await sendOnce({
-    url: template.urlTemplate,
-    method: template.method,
-    headers: template.headers.map((h) => ({ name: h.name, value: h.valueTemplate })),
-    body: template.bodyTemplate,
-    followRedirect: $('followRedirect').checked,
+  const body = req.postData && typeof req.postData.text === 'string' ? req.postData.text : null;
+  return { url: req.url, method: req.method, headers, body, followRedirect: $('followRedirect').checked };
+}
+
+/** 给重放响应补指纹，供查看器直接展示 */
+function decorateReplay(r) {
+  const fingerprint = makeFingerprint({
+    status: r.status,
+    redirectSig: r.redirectSig,
+    normalizedBody: normalizeBody(r.bodyText || '', []),
+    contentType: r.contentType,
   });
+  return { seq: 'R', payload: '(replay)', ...r, fingerprint };
+}
+
+$('replay').addEventListener('click', async () => {
+  // 优先：重放「捕获列表」里当前选中的那一条原始请求；无选中才回退为模板基线（还原 fuzzOriginal，不含 {{FUZZ}} 字面值）。
+  const item = requestList.getSelected();
+  let r;
+  if (item && item.harEntry) {
+    const raw = buildRawRequest(item.harEntry);
+    if (!raw) {
+      $('startHint').textContent = '该条无有效请求内容';
+      return;
+    }
+    $('statusText').textContent = '重放中…(捕获到的原始请求)';
+    r = await sendOnce(raw);
+  } else {
+    const template = editor.readTemplate();
+    if (!template) {
+      $('startHint').textContent = 'URL 无法解析';
+      return;
+    }
+    $('statusText').textContent = '重放中…(模板基线)';
+    r = await sendOnce({ ...renderBaseline(template), followRedirect: $('followRedirect').checked });
+  }
+  diffViewer.show(null, decorateReplay(r), null);
   $('statusText').textContent = `重放: ${r.networkError ? 'ERR ' + r.networkError : r.status + ' ' + r.statusText + ' · ' + r.bodyBytes + 'B · ' + r.timingMs + 'ms'}`;
   console.log('[Diffuzz] 重放响应', r);
+});
+
+// ---------- 浏览器加密：用页面 JS 加密整个 payload 列表 ----------
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+$('encryptDetect').addEventListener('click', async () => {
+  const box = $('encryptCandidates');
+  box.innerHTML = '扫描中…';
+  const { candidates, libs, keys, error } = await detectEncryptFunctions();
+  if (error) {
+    box.innerHTML = '扫描失败：' + esc(error);
+    return;
+  }
+  const libKeys = Object.keys(libs);
+  const libNote = libKeys.length
+    ? '检测到加密库：' + esc(libKeys.join(', ')) + (libs.JSEncrypt ? '（JSEncrypt/RSA）' : '') + '<br>'
+    : '';
+
+  // 有 JSEncrypt（或 sm2）且找到公钥 -> 一键生成标准包装脚本（比全局扫描更常用）
+  const wantLib = libs.JSEncrypt || libs.sm2;
+  const keyNote = keys.length
+    ? `<div class="cand"><button class="btn ghost" data-gen-rsa="1">一键生成 ${esc(libs.JSEncrypt ? 'JSEncrypt' : 'sm2')} 脚本（用提取到的公钥）</button></div>` +
+      `<div class="hint">已提取 ${keys.length} 个公钥，最可能的一个：${esc(String(keys[0]).slice(0, 50))}…</div>`
+    : wantLib
+      ? `<div class="cand"><button class="btn ghost" data-hook-jsenc="1">注入 JSEncrypt 钩子，捕获公钥</button></div>` +
+        `<div class="hint">检测到 JSEncrypt 但没找到公钥。点上面按钮注入钩子后，请到页面正常登录/触发一次加密，Diffuzz 会自动取出公钥并填入脚本。</div>`
+      : '';
+
+  let html = libNote + keyNote;
+  if (candidates.length) {
+    const items = candidates
+      .map((c) => {
+        const preview = c.sample ? esc(String(c.sample).slice(0, 40)) : (c.err ? 'err' : '(无输出)');
+        return `<div class="cand"><button class="btn ghost" data-cand="${esc(c.ref)}">${esc(c.name)}</button>` +
+          `<span class="hint">${esc(c.ref)} ｜ ${preview} ｜ 分${c.score}${c.deterministic ? ' · 稳定' : ' · 每次不同'}</span></div>`;
+      })
+      .join('');
+    html += items + '<div class="hint">点函数名自动填入上面脚本</div>';
+  } else if (!keys.length && !wantLib) {
+    html += '未发现明显全局加密函数，也没检测到常见加密库。可能是藏在闭包/模块里——请改用手动脚本，或在控制台确认页面实际用的加密方式。';
+  }
+  box.innerHTML = html;
+  box.querySelectorAll('[data-cand]').forEach((b) =>
+    b.addEventListener('click', () => {
+      $('encryptScript').value = suggestScript(b.dataset.cand);
+      $('encryptStatus').textContent = '已填入 ' + b.dataset.cand + '，点「用页面JS加密全部Payload」';
+    })
+  );
+  const rsaBtn = box.querySelector('[data-gen-rsa]');
+  if (rsaBtn) {
+    rsaBtn.addEventListener('click', () => {
+      $('encryptScript').value = suggestJsenEncryptScript(keys[0]);
+      $('encryptStatus').textContent = '已填入 JSEncrypt 脚本（公钥已内嵌），直接点「用页面JS加密全部Payload」';
+    });
+  }
+  // 注入 JSEncrypt 钩子：注入后自动轮询捕获公钥，拿到就自动填入脚本（免手动二次按钮）
+  const hookBtn = box.querySelector('[data-hook-jsenc]');
+  if (hookBtn) {
+    hookBtn.addEventListener('click', async () => {
+      hookBtn.disabled = true;
+      const r = await installJSenHook();
+      if (r.error) {
+        hookBtn.disabled = false;
+        $('encryptStatus').textContent = '注入失败：' + r.error;
+        return;
+      }
+      $('encryptStatus').textContent = '钩子已注入。现在去目标页面触发一次真实加密（登录提交/刷新即可）…Diffuzz 会自动读取公钥';
+      for (let i = 0; i < 30; i++) {
+        await new Promise((res) => setTimeout(res, 2000));
+        const key = await getCapturedPubkey();
+        if (key) {
+          $('encryptScript').value = suggestJsenEncryptScript(key);
+          $('encryptStatus').textContent = '已捕获公钥并填入 JSEncrypt 脚本，点「用页面JS加密全部Payload」';
+          return;
+        }
+      }
+      $('encryptStatus').textContent = '60 秒内未捕获到公钥——确认你已在页面上真正触发了一次加密（如提交登录），再重试「自动查找」';
+    });
+  }
+});
+
+$('encryptRun').addEventListener('click', async () => {
+  const script = $('encryptScript').value.trim();
+  if (!script) {
+    $('encryptStatus').textContent = '请先填写带 __VAR__ 的加密表达式';
+    return;
+  }
+  const values = editor.readPayloadLines();
+  if (!values.length) {
+    $('encryptStatus').textContent = 'payload 为空，先填候选值';
+    return;
+  }
+  $('encryptStatus').textContent = `加密中 0/${values.length}…`;
+  const { out, errors, total } = await encryptPayloads({
+    script,
+    values,
+    onProgress: (i, n) => {
+      $('encryptStatus').textContent = `加密中 ${i}/${n}…`;
+    },
+  });
+  if (out.length) {
+    editor.replacePayload(out);
+    editor.updateEstimate();
+  }
+  const errMsg = errors.length ? ` · ${errors.length} 条失败（如 ${errors[0].error}）` : '';
+  $('encryptStatus').textContent = `完成：加密 ${out.length}/${total} 条并回填${errMsg}`;
 });
 
 // ---------- 任务控制（直接调用，不再跨进程通信） ----------

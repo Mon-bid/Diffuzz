@@ -181,6 +181,8 @@ td.num { text-align: right; }
   flex-direction: column;
 }
 .diff-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; flex: 1; min-height: 0; overflow: hidden; }
+/* 让 hidden 属性压下 display:grid/flex，防止「基线对比」在详情页签漏显示 */
+#diffViewer [hidden] { display: none !important; }
 .diff-pane {
   margin: 0; padding: 6px;
   background: var(--bg3); border-radius: 4px;
@@ -194,9 +196,22 @@ td.num { text-align: right; }
 .detail-pane { flex: 1; min-height: 0; overflow: auto; font-family: Consolas, monospace; font-size: 11px; }
 .detail-pane .st { color: var(--accent); font-weight: 700; }
 .detail-pane .k { color: var(--dim); }
-.detail-pane .v { color: var(--fg); word-break: break-all; }
-.detail-pane .body { margin: 6px 0 0; padding: 6px; background: var(--bg3); border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
-.detail-pane .sec { margin-top: 6px; color: var(--warn); }
+.detail-pane .v { color: var(--fg); word-break: break-word; }
+.detail-pane .sec-d { margin-top: 6px; border: 1px solid var(--line); border-radius: 4px; padding: 2px 5px; }
+.detail-pane summary { cursor: pointer; color: var(--warn); font-weight: 600; user-select: none; }
+.detail-pane .sec-tools { margin: 2px 0 4px; }
+.detail-pane .body { margin: 4px 0 0; padding: 6px; background: var(--bg3); border-radius: 4px; white-space: pre-wrap; word-break: normal; overflow-wrap: break-word; }
+/* JSON 语法高亮配色（GitHub Dark 主题色） */
+.detail-pane .json-key { color: #7ee787; }
+.detail-pane .json-str { color: #ffa657; }
+.detail-pane .json-num { color: #79c0ff; }
+.detail-pane .json-bool { color: #ff7b72; }
+.detail-pane .json-null { color: #d29922; }
+.detail-pane .json-pun { color: var(--dim); }
+
+/* 加密候选列表 */
+.cand { display: flex; align-items: center; gap: 6px; padding: 2px 0; }
+.cand .hint { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 320px; }
 
 #statusbar {
   display: flex; align-items: center; gap: 8px;

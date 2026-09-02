@@ -18,6 +18,7 @@ export function initDiffViewer() {
 
   let activeTab = 'detail'; // 默认响应详情
   let cur = { baselineRecord: null, record: null, diff: null };
+  let prettyBody = true; // 正文默认「美化+高亮」，可切回原文
 
   closeBtn.addEventListener('click', () => {
     box.hidden = true;
@@ -31,6 +32,14 @@ export function initDiffViewer() {
   });
   tabDetail.addEventListener('click', () => setActiveTab('detail'));
   tabDiff.addEventListener('click', () => setActiveTab('diff'));
+  // 详情面板内的按钮走事件委托（innerHTML 每次重建，冒泡到容器最稳）
+  detail.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act="toggleBody"]');
+    if (btn) {
+      prettyBody = !prettyBody;
+      renderDetail(cur.record);
+    }
+  });
 
   function setActiveTab(t) {
     activeTab = t;
@@ -44,44 +53,97 @@ export function initDiffViewer() {
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  /** 响应详情页签 */
+  /** 美化 JSON：解析失败返回 null */
+  function prettyJson(str) {
+    try {
+      return JSON.stringify(JSON.parse(str), null, 2);
+    } catch {
+      return null;
+    }
+  }
+
+  /** 对已美化的 JSON 做一次性 tokenize 语法高亮 */
+  function highlightPretty(pretty) {
+    // 匹配：字符串(可能紧跟冒号=键) / 数字 / 布尔 / null / 结构符
+    const re = /("(?:[^"\\]|\\.)*")(\s*:)?|\b(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\b|\b(true|false)\b|\b(null)\b|([\[\]{}:,])/g;
+    let out = '';
+    let last = 0;
+    let m;
+    while ((m = re.exec(pretty))) {
+      if (m.index > last) out += escapeHtml(pretty.slice(last, m.index));
+      if (m[1]) {
+        out += `<span class="${m[2] ? 'json-key' : 'json-str'}">${escapeHtml(m[1])}</span>`;
+        if (m[2]) out += escapeHtml(m[2]); // 冒号
+      } else if (m[3]) {
+        out += `<span class="json-num">${escapeHtml(m[3])}</span>`;
+      } else if (m[4]) {
+        out += `<span class="json-bool">${escapeHtml(m[4])}</span>`;
+      } else if (m[5]) {
+        out += `<span class="json-null">${escapeHtml(m[5])}</span>`;
+      } else if (m[6]) {
+        out += `<span class="json-pun">${escapeHtml(m[6])}</span>`;
+      }
+      last = re.lastIndex;
+    }
+    if (last < pretty.length) out += escapeHtml(pretty.slice(last));
+    return out;
+  }
+
+  /** 响应详情页签：元信息 / 响应头 / 正文 三段折叠 */
   function renderDetail(r) {
     if (!r) {
       detail.replaceChildren();
       return;
     }
-    const rows = [];
-    const kv = (k, v) => rows.push(`<div><span class="k">${k}:</span> <span class="v">${escapeHtml(v)}</span></div>`);
-    rows.push(`<div class="st">${r.networkError ? 'ERR ' + escapeHtml(r.networkError) : 'HTTP ' + r.status + ' ' + escapeHtml(r.statusText || '')}</div>`);
-    kv('最终 URL', r.finalUrl || '-');
-    kv('跳转', r.fingerprint && r.fingerprint.redirectSig ? r.fingerprint.redirectSig : '无');
-    kv('类型', r.contentType || '-');
-    kv('大小', (r.bodyBytes || 0) + 'B · 归一化长度 ' + (r.fingerprint ? r.fingerprint.lenNorm : '-'));
-    kv('耗时', (r.timingMs || 0) + 'ms');
-    if (r.capped) kv('正文', '已截断（>2MB）');
+    const kv = (k, v) => `<div><span class="k">${escapeHtml(k)}:</span> <span class="v">${escapeHtml(v)}</span></div>`;
+    const meta = [
+      `<div class="st">${r.networkError ? 'ERR ' + escapeHtml(r.networkError) : 'HTTP ' + r.status + ' ' + escapeHtml(r.statusText || '')}</div>`,
+      kv('最终 URL', r.finalUrl || '-'),
+      kv('跳转', r.fingerprint && r.fingerprint.redirectSig ? r.fingerprint.redirectSig : '无'),
+      kv('类型', r.contentType || '-'),
+      kv('大小', (r.bodyBytes || 0) + 'B · 归一化长度 ' + (r.fingerprint ? r.fingerprint.lenNorm : '-')),
+      kv('耗时', (r.timingMs || 0) + 'ms'),
+      r.capped ? kv('正文', '已截断（>2MB）') : '',
+    ].join('');
 
     const hdrs = Object.entries(r.headers || {});
-    if (hdrs.length) {
-      rows.push('<div class="sec">响应头</div>');
-      for (const [k, v] of hdrs) kv(k, v);
-    }
+    const hdrHtml = hdrs.length
+      ? `<details class="sec-d"><summary>响应头 (${hdrs.length})</summary>` + hdrs.map(([k, v]) => kv(k, v)).join('') + '</details>'
+      : '';
 
-    rows.push('<div class="sec">正文</div>');
+    const ct = (r.contentType || '').split(';')[0] || '';
+    const rawBytes = r.bodyBytes || 0;
     let body = r.bodyText || '';
+    const truncated = !!r.capped || /<截断于/.test(body) || body.length > BODY_DISPLAY_CAP;
+    if (body.length > BODY_DISPLAY_CAP) {
+      body = body.slice(0, BODY_DISPLAY_CAP) + `\n…（显示前 ${BODY_DISPLAY_CAP / 1024}KB，全文 ${rawBytes}B）`;
+    }
+    const isJson =
+      (ct.toLowerCase().includes('json') || /^[\s]*[{\[]/.test(body.slice(0, 64))) &&
+      prettyJson(body) != null;
+    let bodyHtml = '<span class="k">（空）</span>';
+    let chars = 0;
     if (body) {
-      // JSON 美化
-      const ct = (r.contentType || '').toLowerCase();
-      if (ct.includes('json') || /^[\s]*[{\[]/.test(body.slice(0, 64))) {
-        try {
-          body = JSON.stringify(JSON.parse(body), null, 2);
-        } catch {
-          // 非 JSON 保持原文
-        }
+      if (isJson && prettyBody) {
+        bodyHtml = highlightPretty(prettyJson(body));
+        chars = prettyJson(body).length; // 美化后字符数（与实际渲染一致）
+      } else {
+        bodyHtml = escapeHtml(body);
+        chars = body.length; // 原文/非 JSON 的实际字符数
       }
     }
-    if (body.length > BODY_DISPLAY_CAP) body = body.slice(0, BODY_DISPLAY_CAP) + `\n…（显示前 ${BODY_DISPLAY_CAP / 1024}KB，全文 ${r.bodyBytes}B）`;
-    rows.push(`<div class="body">${escapeHtml(body) || '<span class="k">（空）</span>'}</div>`);
-    detail.innerHTML = rows.join('');
+    // non-JSON 不显示「美化/原文」切换（点了无变化会让人困惑）；JSON 才给切换
+    const toggleHtml = isJson
+      ? `<div class="sec-tools"><button class="btn ghost" data-act="toggleBody">${prettyBody ? '原文' : '美化'}</button></div>`
+      : '';
+    const bodySec =
+      `<details open class="sec-d"><summary>正文（${escapeHtml(ct || '?')} · 显示 ${chars} 字符 / 原始 ${rawBytes}B${truncated ? ' · 已截断' : ''}）</summary>` +
+      toggleHtml +
+      `<div class="body">${bodyHtml}</div></details>`;
+
+    detail.innerHTML =
+      `<details open class="sec-d"><summary>响应摘要</summary>${meta}</details>` +
+      hdrHtml + bodySec;
   }
 
   /** LCS 行 diff（基线对比页签） */

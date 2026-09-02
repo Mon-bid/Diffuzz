@@ -73,6 +73,18 @@
     </div>
 
     <details>
+      <summary>浏览器加密（用页面 JS 加密 payload 后回填）</summary>
+      <div class="hint">用页面自己的 JS 加密 payload 并回填。`__VAR__` 代表候选值；先点「自动查找加密函数」最快。</div>
+      <textarea id="encryptScript" rows="3" spellcheck="false" placeholder="(async()=&gt;String(await window.encrypt(__VAR__)))()"></textarea>
+      <div class="row">
+        <button id="encryptDetect" class="btn ghost">自动查找加密函数</button>
+        <button id="encryptRun" class="btn ghost">用页面JS加密全部Payload</button>
+      </div>
+      <div id="encryptStatus" class="hint"></div>
+      <div id="encryptCandidates" class="hint"></div>
+    </details>
+
+    <details>
       <summary>字典库（保存 / 导入 / 复用）</summary>
       <div class="row">
         <input id="dictName" type="text" placeholder="字典名，如 常用弱口令">

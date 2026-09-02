@@ -59,6 +59,8 @@ export class TaskRunner {
     this.aborted = false;
     this.allowIntranet = false;
     this._pauseResolvers = [];
+    this.gen = 0; // generation token：新任务 start / 终止时自增，旧循环凭它失效
+    this._taskAbort = null; // 任务级 AbortController，终止时掐断 sleep + 在途请求
   }
 
   addPort(port) {
@@ -106,11 +108,12 @@ export class TaskRunner {
 
   abort() {
     this.aborted = true;
+    this.gen++; // 让旧的 run 循环失效
     this.resume(); // 唤醒可能在等待的循环
-    // 立刻掐断在途请求，避免等 fetch 超时
-    if (this._curAbort) {
+    // 立刻掐断在途请求 + 未完成的限速睡眠，避免等 fetch 超时
+    if (this._taskAbort) {
       try {
-        this._curAbort.abort();
+        this._taskAbort.abort();
       } catch {}
     }
     if (this.task && !/done|aborted|error/.test(this.task.status)) {
@@ -120,21 +123,17 @@ export class TaskRunner {
     this.broadcast({ type: 'task/aborting' });
   }
 
-  /** 发送一条（统一挂上可中断信号） */
+  /** 发送一条（统一挂上任务级可中断信号，终止时立即掐断在途请求） */
   async send(req, config) {
-    this._curAbort = new AbortController();
-    try {
-      return await sendOnce({ ...req, followRedirect: config.followRedirect, timeoutMs: config.timeoutMs, signal: this._curAbort.signal });
-    } finally {
-      this._curAbort = null;
-    }
+    const signal = this._taskAbort ? this._taskAbort.signal : undefined;
+    return await sendOnce({ ...req, followRedirect: config.followRedirect, timeoutMs: config.timeoutMs, signal });
   }
 
-  async waitWhilePaused() {
-    while (this.paused && !this.aborted) {
+  async waitWhilePaused(gen) {
+    while (this.paused && this.gen === gen && !this.aborted) {
       await new Promise((r) => this._pauseResolvers.push(r));
       // resume() 已 resolve 所有；再兜底轮询
-      if (this.paused && !this.aborted) await sleep(300);
+      if (this.paused && this.gen === gen && !this.aborted) await sleep(300);
     }
   }
 
@@ -167,6 +166,12 @@ export class TaskRunner {
     this.paused = false;
     this.aborted = false;
 
+    // 新一代：立即废弃任何仍在跑的旧循环，并给本任务一个可中止的信号
+    const gen = ++this.gen;
+    this._taskAbort = new AbortController();
+    const taskAbort = this._taskAbort;
+    const halted = () => this.gen !== gen || !this.task || this.task.status === 'aborted';
+
     const limiter = new RateLimiter(config.ratePerSec || 2);
     this.broadcast({ type: 'task/state', snapshot: this.snapshot() });
 
@@ -174,18 +179,19 @@ export class TaskRunner {
       try {
         // ---- 基线 ----
         const baselineRuns = Math.max(1, Math.min(5, config.baselineRuns ?? 3));
-        for (let i = 0; i < baselineRuns && !this.aborted; i++) {
-          await this.waitWhilePaused();
-          if (this.aborted) break;
-          await limiter.wait();
+        for (let i = 0; i < baselineRuns && !halted(); i++) {
+          await this.waitWhilePaused(gen);
+          if (halted()) return;
+          await limiter.wait(taskAbort.signal);
+          if (halted()) return;
           const req = renderBaseline(template);
           const rec = await this.send(req, config);
-          if (this.aborted && rec.networkError === 'aborted') break;
+          if (halted()) return;
           this.baselineRecords.push(this.decorate(rec, null, template, config));
         }
         this.baseline = buildBaseline(this.baselineRecords);
         this.broadcast({ type: 'task/baseline', baseline: this.baseline, baselineRecords: this.baselineRecords });
-        if (this.aborted) return this.finish();
+        if (halted()) return this.finish();
 
         // ---- 逐条发送 ----
         this.task.status = 'running';
@@ -197,8 +203,8 @@ export class TaskRunner {
         let sentSinceTick = 0;
 
         for (let i = 0; i < config.payloads.length; i++) {
-          await this.waitWhilePaused();
-          if (this.aborted) break;
+          await this.waitWhilePaused(gen);
+          if (halted()) return;
           const payload = config.payloads[i];
           const req = renderTemplate(template, payload);
 
@@ -216,10 +222,10 @@ export class TaskRunner {
             continue;
           }
 
-          await limiter.wait();
-          if (this.aborted) break;
+          await limiter.wait(taskAbort.signal);
+          if (halted()) return;
           const rec = await this.send(req, config);
-          if (this.aborted && rec.networkError === 'aborted') break; // 被终止的请求不入表
+          if (halted()) return; // 被终止的请求不入表
           const decorated = this.decorate(rec, payload, template, config);
           decorated.seq = i + 1;
           this.records.push(decorated);
@@ -254,10 +260,12 @@ export class TaskRunner {
           }
         }
 
+        if (this.gen !== gen) return; // 运行中被新任务替换，静默退出
         if (batch.length) this.broadcast({ type: 'task/result', records: batch });
         this.results = analyze(this.records.filter((r) => !r.skipped), this.baseline);
         this.finish();
       } catch (e) {
+        if (this.gen !== gen) return;
         this.task.status = 'error';
         this.task.error = String(e && e.message ? e.message : e);
         this.broadcast({ type: 'task/state', snapshot: this.snapshot() });

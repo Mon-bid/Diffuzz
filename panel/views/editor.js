@@ -143,15 +143,35 @@ export function initEditor({ onFuzzChange }) {
     updateFuzzInfo();
   }
 
-  function readConfig() {
+  /** 读取 payload 编辑框：trim / 去空 / 去重，保序 */
+  function readPayloadLines() {
     const seen = new Set();
-    const payloads = [];
+    const out = [];
     for (const line of el.payload.value.split('\n')) {
       const v = line.trim();
-      if (!v || seen.has(v)) continue; // 去重，保序
+      if (!v || seen.has(v)) continue;
       seen.add(v);
-      payloads.push(v);
+      out.push(v);
     }
+    return out;
+  }
+
+  /** 用新行集回填 payload 编辑框（去空/去重，保序），并刷估算 */
+  function replacePayload(lines) {
+    const seen = new Set();
+    const out = [];
+    for (const line of lines) {
+      const v = line.trim();
+      if (!v || seen.has(v)) continue;
+      seen.add(v);
+      out.push(v);
+    }
+    el.payload.value = out.join('\n');
+    updateEstimate();
+  }
+
+  function readConfig() {
+    const payloads = readPayloadLines();
     return {
       payloads,
       ratePerSec: Number(document.getElementById('rate').value) || 2,
@@ -176,5 +196,5 @@ export function initEditor({ onFuzzChange }) {
   }
   [el.payload, document.getElementById('rate')].forEach((x) => x.addEventListener('input', updateEstimate));
 
-  return { fillTemplate, readTemplate, readConfig, fuzzCount, updateEstimate, fields };
+  return { fillTemplate, readTemplate, readConfig, fuzzCount, updateEstimate, fields, readPayloadLines, replacePayload };
 }
